@@ -1,0 +1,56 @@
+# venv
+venv/
+.venv/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# secrets
+.env
+.env.tinkoff
+.env.*
+!.env.example
+*.pem
+*.key
+id_*
+
+# backups
+*.bak
+*.bak_*
+*.bak_pre_*
+
+# logs
+*.log
+*.log.*
+*.jsonl
+logs/
+
+# runtime
+/var/run/moex.lock
+*.pid
+*.sock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# tests scratch
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.egg-info/
+
+# generated
+*.bak_pre_*
+scripts/patches/__pycache__/
