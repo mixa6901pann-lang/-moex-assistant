@@ -1,0 +1,14 @@
+#!/bin/bash
+# Warn if pushing directly to main. Bypass with --no-verify.
+
+protected_branch='main'
+current_branch=$(git symbolic-ref HEAD | sed 's:.*/::')
+
+if [ "$current_branch" = "$protected_branch" ]; then
+  echo "[pre-push] WARNING: pushing directly to $protected_branch."
+  echo "[pre-push] Recommended: create a feature branch, merge via PR/review."
+  echo "[pre-push] To proceed anyway: git push --no-verify"
+  exit 1
+fi
+
+exit 0
