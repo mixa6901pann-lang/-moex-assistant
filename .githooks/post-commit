@@ -1,0 +1,52 @@
+#!/bin/bash
+# After every commit:
+#   1) snapshot moex.db via sqlite3 .backup (safe with WAL)
+#   2) git bundle the working tree (portable single-file backup)
+#   3) prune backups older than 30 days
+#
+# Skipped under git commit --no-verify (pre-commit hook handles that flag;
+# this hook fires regardless, but only on real commits so no need to gate).
+
+set -e
+
+TS=$(date +%Y%m%d-%H%M%S)
+DB_BACKUP_DIR="/root/backups/moex-db"
+BUNDLE_DIR="/root/backups/code"
+DB_SRC="/root/moex/data/moex.db"
+LOG="/var/log/moex-backup.log"
+
+# Make sure log dir exists.
+sudo mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | sudo tee -a "$LOG" >/dev/null
+}
+
+# 1) sqlite3 .backup — atomic snapshot of moex.db.
+if [ -f "$DB_SRC" ]; then
+  TARGET="$DB_BACKUP_DIR/moex-${TS}.db"
+  if sudo sqlite3 "$DB_SRC" ".backup '$TARGET'"; then
+    SIZE=$(stat -c%s "$TARGET" 2>/dev/null || echo "?")
+    log "db backup ok: $TARGET ($SIZE bytes)"
+  else
+    log "db backup FAILED: $TARGET"
+  fi
+else
+  log "skip db backup: $DB_SRC not found"
+fi
+
+# 2) git bundle — single-file archive of all refs.
+BUNDLE="$BUNDLE_DIR/code-${TS}.bundle"
+if sudo git bundle create "$BUNDLE" --all 2>/dev/null; then
+  SIZE=$(stat -c%s "$BUNDLE" 2>/dev/null || echo "?")
+  log "code bundle ok: $BUNDLE ($SIZE bytes)"
+else
+  log "code bundle FAILED: $BUNDLE"
+fi
+
+# 3) prune backups older than 30 days. -mtime +30 = strictly older than 30d.
+PRUNED_DB=$(sudo find "$DB_BACKUP_DIR" -maxdepth 1 -name "moex-*.db" -mtime +30 -delete -print 2>/dev/null | wc -l)
+PRUNED_BUNDLE=$(sudo find "$BUNDLE_DIR" -maxdepth 1 -name "code-*.bundle" -mtime +30 -delete -print 2>/dev/null | wc -l)
+log "pruned: $PRUNED_DB db backups, $PRUNED_BUNDLE bundles"
+
+exit 0
