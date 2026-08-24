@@ -290,3 +290,9 @@ STOP_TAKE_MATCH_TOLERANCE_RUB = float(os.getenv("STOP_TAKE_MATCH_TOLERANCE_RUB",
 # 916.95 vs broker 940.30 at 13:45).
 INTRADAY_MAX_CANDLE_AGE_MIN = int(os.getenv("INTRADAY_MAX_CANDLE_AGE_MIN", "5"))
 INTRADAY_PRICE_DRIFT_PCT = float(os.getenv("INTRADAY_PRICE_DRIFT_PCT", "1.0"))
+
+# When True, check_predictions logs evaluations but does not write results
+# to the predictions table. Lets us stop accumulating low-signal daily
+# accuracy rows without losing the ability to flip back on (e.g. for the
+# sentiment correlation study).
+PREDICTIONS_DRY_RUN = os.getenv("PREDICTIONS_DRY_RUN", "true").lower() in ("true", "1", "yes")

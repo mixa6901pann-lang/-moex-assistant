@@ -518,6 +518,12 @@ class MoexAssistant:
                         result = "correct" if actual < pred_px * 0.995 else "wrong"
                     else:
                         continue
+                    if app_config.PREDICTIONS_DRY_RUN:
+                        logger.info(
+                            f"[DRY_RUN] Prediction {p['id']} {p['ticker']} {horizon}d: {result} "
+                            f"(pred {pred_px}, actual {actual}) — not written to DB"
+                        )
+                        continue
                     await db.update_prediction_result(p["id"], horizon, result, actual)
                     logger.info(f"Prediction {p['id']} {p['ticker']} {horizon}d: {result} (pred {pred_px}, actual {actual})")
                 except Exception as e:
