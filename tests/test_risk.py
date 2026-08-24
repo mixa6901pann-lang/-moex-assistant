@@ -18,8 +18,8 @@ class TestCalculatePosition:
         assert plan.ticker == "SBER"
         assert plan.side == "long"
         assert plan.entry_px == 250.0
-        assert plan.stop_px == 240.0  # 250 - 2*5
-        assert plan.target_px == 270.0  # 250 + 2*5*2
+        assert plan.stop_px == 242.5  # 250 - 1.5*5 (STOP_LOSS_ATR_MULT)
+        assert plan.target_px == 261.25  # 250 + 1.5*5*1.5 (TARGET_RR)
         assert plan.qty >= 1
         assert plan.risk_rub > 0
         assert plan.risk_pct <= 2.0
@@ -27,15 +27,15 @@ class TestCalculatePosition:
     def test_short_basic(self):
         plan = calculate_position("GAZP", "short", 200.0, atr=4.0, equity=1_000_000)
         assert plan.side == "short"
-        assert plan.stop_px == 208.0  # 200 + 2*4
-        assert plan.target_px == 184.0  # 200 - 2*4*2
+        assert plan.stop_px == 206.0  # 200 + 1.5*4
+        assert plan.target_px == 191.0  # 200 - 1.5*4*1.5
         assert plan.qty >= 1
 
     def test_risk_reward(self):
         plan = calculate_position("SBER", "long", 250.0, atr=5.0, equity=1_000_000)
         rr = plan.risk_reward()
         assert rr is not None
-        assert rr == pytest.approx(2.0)
+        assert rr == pytest.approx(1.5)
 
     def test_zero_atr(self):
         plan = calculate_position("SBER", "long", 250.0, atr=0.0, equity=1_000_000)
