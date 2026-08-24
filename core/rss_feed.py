@@ -198,7 +198,14 @@ class RssNewsAggregator:
         body: str | None = None
         try:
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-                r = await client.get(url, headers={"user-agent": "Mozilla/5.0"})
+                # Realistic browser headers so RSS hosts (Finam, etc.)
+                # don’t return 403 to default urllib-like User-Agent.
+                browser_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+                    "Accept-Language": "ru,en;q=0.9",
+                }
+                r = await client.get(url, headers=browser_headers)
                 r.raise_for_status()
                 content_type = r.headers.get("content-type", "")
                 if "html" in content_type.lower():
