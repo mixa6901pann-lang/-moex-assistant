@@ -407,7 +407,34 @@ class IntradayAgent:
         confidence = 0
         reason = "Нет чёткого внутридневного сигнала."
 
-        if near_low and bounce_up_factors >= _MIN_BOUNCE_FACTORS_UP:
+        # Continuation override: in a strong trend (ADX > 30 + volume spike
+        # + price clearly off VWAP), continuation wins over bounce. Without
+        # this, the near_low/near_high check at the bottom of this function
+        # blocks continuation exactly when the daily high/low are stretched
+        # — which is the common case for ADX>30 downtrends. 25.08.2026
+        # NVTK ADX=71 was stuck on bounce_up (which then died on the
+        # GeoRisk filter) instead of continuation_down.
+        if (
+            vwap
+            and adx is not None
+            and adx > 30
+            and (vol_spike_up or vol_spike_down)
+        ):
+            above_vwap = price > vwap * (1 + _VWAP_PROXIMITY)
+            below_vwap = price < vwap * (1 - _VWAP_PROXIMITY)
+            if above_vwap or below_vwap:
+                direction = "long" if above_vwap else "short"
+                extra = ["above_vwap" if above_vwap else "below_vwap",
+                         "adx_strong", "volume_spike"]
+                signals_used = list(dict.fromkeys(signals_used + extra))
+                signal = "continuation"
+                confidence = 40 + 3 * 12
+                reason = (
+                    f"Продолжение {'восходящего' if direction == 'long' else 'медвежьего'} тренда: "
+                    f"цена {'выше' if direction == 'long' else 'ниже'} VWAP, "
+                    f"ADX {adx:.1f}, объём выше среднего."
+                )
+        if signal != "continuation" and near_low and bounce_up_factors >= _MIN_BOUNCE_FACTORS_UP:
             signal = "bounce_up"
             direction = "long"
             confidence = 40 + bounce_up_factors * 12
@@ -423,7 +450,7 @@ class IntradayAgent:
             if double_bottom:
                 parts.append("double bottom")
             reason = "Возможен отскок вверх: " + ", ".join(parts) + "."
-        elif near_high and bounce_down_factors >= _MIN_BOUNCE_FACTORS_DOWN:
+        elif signal != "continuation" and near_high and bounce_down_factors >= _MIN_BOUNCE_FACTORS_DOWN:
             signal = "bounce_down"
             direction = "short"
             confidence = 40 + bounce_down_factors * 12

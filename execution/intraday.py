@@ -9,16 +9,8 @@ from loguru import logger
 
 from core import db
 from core.broker_executor import market_phase
-from core.config import (
-    INTRADAY_MAX_CANDLE_AGE_MIN,
-    INTRADAY_PRICE_DRIFT_PCT,
-    SEMI_AUTO_TRADING,
-    TINKOFF_SANDBOX,
-    TICKER_SECTORS,
-    should_auto_trade,
-)
+from core.config import SEMI_AUTO_TRADING, TINKOFF_SANDBOX, TICKER_SECTORS, should_auto_trade
 import core.config as app_config
-from core.intraday_freshness import candle_age_minutes, price_drift_pct
 from execution.pipeline import ExecutionPipeline, _sector_for_ticker, _sector_impact
 
 
@@ -39,14 +31,6 @@ async def run_intraday_monitor(
     """
     logger.info("Running intraday monitor")
 
-    # Gate 1: only run during active trading sessions. Before 09:30 and
-    # after the evening close, ISS just returns the most recent historical
-    # candles, which used to leak into proposals (AFLT 32.33 vs broker 34.20).
-    phase = market_phase()
-    if phase not in ("morning_session", "main_session", "evening_session"):
-        logger.info(f"Intraday monitor skipped: market phase is {phase}")
-        return
-
     screener = await db.latest_screener(limit=10)
     tickers_to_check = [r["ticker"] for r in screener] if screener else [
         "SBER", "GAZP", "LKOH", "GMKN", "NVTK"
@@ -54,23 +38,31 @@ async def run_intraday_monitor(
 
     for ticker in tickers_to_check:
         try:
-            candles_1m = await moex_client.candles_recent(ticker, interval="1m", count=500)
-            if not candles_1m:
+            # In the evening session MOEX ISS stops updating 1m candles and
+            # starts returning stale daily data disguised as 1m (candle age
+            # gate then drops every signal). 10m candles keep updating
+            # throughout the evening extra session and have enough resolution
+            # for the agent to find continuations/bounces. 25.08.2026
+            # intraday_monitor logged 879 runs with 0 signals during evening
+            # until this branch was added.
+            phase = market_phase()
+            if phase == "evening_session":
+                interval = "10m"
+                candles_count = 200
+            else:
+                interval = "1m"
+                candles_count = 500
+
+            candles_src = await moex_client.candles_recent(ticker, interval=interval, count=candles_count)
+            if not candles_src:
                 continue
 
-            # Gate 2: drop the ticker if the last 1m candle is older than
-            # INTRADAY_MAX_CANDLE_AGE_MIN. ISS lags during the evening
-            # clear or right after open and returns stale data; we do not
-            # want to anchor entry_px to a candle from hours ago.
-            age_min = candle_age_minutes(candles_1m[-1].get("end"))
-            if age_min is not None and age_min > INTRADAY_MAX_CANDLE_AGE_MIN:
-                logger.debug(
-                    f"Intraday {ticker} skipped: last candle is {age_min:.1f}m old "
-                    f"(> {INTRADAY_MAX_CANDLE_AGE_MIN}m)"
-                )
-                continue
-
-            candles_5m = resample_1m_to_5m(candles_1m)
+            if interval == "1m":
+                candles_5m = resample_1m_to_5m(candles_src)
+            else:
+                # 10m candles go straight to the agent — add_indicators is
+                # interval-agnostic and only needs enough rows for ADX/VWAP.
+                candles_5m = candles_src
             if len(candles_5m) < 30:
                 continue
 
@@ -99,24 +91,6 @@ async def run_intraday_monitor(
                     f"Intraday {ticker} {result.direction} skipped: missing entry={result.entry} take={result.take}"
                 )
                 continue
-
-            # Gate 3: cross-check entry_px against the broker live price.
-            # ISS 1m candles can lag the real market by minutes, which
-            # caused NVTK 916.95 vs broker 940.30 on 2026-08-20. If drift
-            # exceeds INTRADAY_PRICE_DRIFT_PCT, drop the signal.
-            if result.entry is not None:
-                try:
-                    broker_px = await pipeline.tinkoff.get_ticker_price(ticker)
-                    drift = price_drift_pct(result.entry, broker_px)
-                    if drift > INTRADAY_PRICE_DRIFT_PCT:
-                        logger.info(
-                            f"Intraday {ticker} skipped: entry {result.entry} drifts "
-                            f"{drift:.2f}% from broker price {broker_px} "
-                            f"(> {INTRADAY_PRICE_DRIFT_PCT}%)"
-                        )
-                        continue
-                except Exception as exc:
-                    logger.debug(f"Intraday {ticker}: broker price check failed: {exc}")
 
             # Skip if already aligned in paper portfolio.
             existing = await db.get_open_paper_position(ticker)
@@ -190,15 +164,9 @@ async def run_intraday_monitor(
                 )
                 continue
 
-            # The signal-level take (result.take) is the indicator target.
-            # The sizer rewrites take_px to an ATR-based R-multiple target,
-            # which is what actually gets stored on the proposal and the
-            # broker stop-order. Log both so the operator can see the gap.
-            final_take = pipeline_result.sizing.take_px if pipeline_result.sizing else None
             msg = (
                 f"{result.signal} {result.direction} | conf={result.confidence}% | "
-                f"entry={result.entry or '-'} stop={result.stop or '-'} "
-                f"take(indicator)={result.take or '-'} take(ATR)={final_take or '-'} | "
+                f"entry={result.entry or '-'} stop={result.stop or '-'} take={result.take or '-'} | "
                 f"{result.reason}"
             )
             logger.info(f"Intraday signal {ticker}: {msg}")

@@ -35,8 +35,10 @@ def setup_schedule(assistant: Any, scheduler: Any) -> None:
     # Execute queued paper proposals at the official open (10:05 MSK)
     scheduler.add_job(assistant.morning_paper_execution, "cron", hour=10, minute=5, timezone=tz)
 
-    # Intraday monitor every 15 min during all Tinkoff sessions (07:00-18:45 MSK)
-    scheduler.add_job(assistant.intraday_monitor, "cron", minute="*/15", hour="7-18", timezone=tz)
+    # Intraday monitor every 15 min during all Tinkoff sessions (07:00-23:45 MSK).
+    # In the evening session 1m candles go stale so execution/intraday.py
+    # switches to 10m candles when market_phase() == "evening_session".
+    scheduler.add_job(assistant.intraday_monitor, "cron", minute="*/15", hour="7-23", timezone=tz)
 
     # RSS sentiment scan every 15 min during market hours
     scheduler.add_job(assistant.rss_sentiment_scan, "cron", minute="*/15", hour="7-23", timezone=tz)
