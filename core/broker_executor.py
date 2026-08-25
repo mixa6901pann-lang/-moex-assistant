@@ -278,15 +278,28 @@ async def run_broker_order_executor(
             f"min_conf={app_config.AUTO_TRADE_MIN_CONFIDENCE} pending={len(pending)}"
         )
         for prop in pending:
-            # Auto-trade guard: filter by signal confidence. Protects against
-            # junk signals in autotrade mode. NULL-confidence proposals are
-            # skipped — better to require manual confirmation than trade blind.
-            if app_config.AUTO_TRADE:
-                conf = prop.get("confidence")
+            # Confidence guard. Two thresholds:
+            #   - AUTO_TRADE_MIN_CONFIDENCE — for proposals the robot itself
+            #     promoted to "auto_trade" (no manual confirm).
+            #   - MANUAL_CONFIRM_MIN_CONFIDENCE — for proposals the user
+            #     confirmed in UI; lower because the user explicitly accepted
+            #     the risk. NULL confidence = skip, never trade blind.
+            conf = prop.get("confidence")
+            prop_mode = prop.get("proposal_mode")
+            prop_status = prop.get("status")
+            if app_config.AUTO_TRADE and prop_mode == "auto_trade":
                 min_conf = app_config.AUTO_TRADE_MIN_CONFIDENCE
                 if conf is None or conf < min_conf:
                     logger.info(
                         f"Auto-trade skip proposal {prop['id']} {prop['ticker']} "
+                        f"{prop['side']}: confidence={conf} < {min_conf}"
+                    )
+                    continue
+            elif prop_mode == "semi_auto" and prop_status == "confirmed":
+                min_conf = app_config.MANUAL_CONFIRM_MIN_CONFIDENCE
+                if conf is None or conf < min_conf:
+                    logger.info(
+                        f"Manual-confirm skip proposal {prop['id']} {prop['ticker']} "
                         f"{prop['side']}: confidence={conf} < {min_conf}"
                     )
                     continue
