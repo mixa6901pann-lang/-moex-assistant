@@ -218,7 +218,9 @@ CREATE TABLE IF NOT EXISTS robot_proposals (
     decided_by  TEXT,
     reject_reason TEXT,                 -- why user rejected the proposal
     exec_entry_px REAL,                 -- actual fill price (usually next-day open)
-    exec_ts     TEXT                    -- when the morning job executed the proposal
+    exec_ts     TEXT,                   -- when the morning job executed the proposal
+    initial_atr REAL,                   -- ATR at signal time, used for trailing-stop
+    atr_mult    REAL                    -- configured stop-loss / trailing ATR multiplier
 );
 CREATE INDEX IF NOT EXISTS idx_robot_proposals_status ON robot_proposals(status, ts);
 CREATE INDEX IF NOT EXISTS idx_robot_proposals_ticker ON robot_proposals(ticker, status);
@@ -341,6 +343,8 @@ async def _migrate_db(db: aiosqlite.Connection) -> None:
     # Robot proposal horizon/mode columns for existing databases
     await _ensure_column(db, "robot_proposals", "horizon", "TEXT")
     await _ensure_column(db, "robot_proposals", "proposal_mode", "TEXT DEFAULT 'semi_auto'")
+    await _ensure_column(db, "robot_proposals", "initial_atr", "REAL")
+    await _ensure_column(db, "robot_proposals", "atr_mult", "REAL")
 
     # Paper-proposal execution tracking
     await _ensure_column(db, "robot_proposals", "exec_entry_px", "REAL")

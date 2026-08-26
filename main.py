@@ -7,10 +7,21 @@ VKontakte only.
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import json
 import os
 import sys
+import tempfile
+
+if os.name == "posix":
+    import fcntl  # type: ignore[import-not-found]
+    _LOCK_FN = fcntl.flock
+    _LOCK_EX = fcntl.LOCK_EX
+    _LOCK_NB = fcntl.LOCK_NB
+else:  # Windows / non-POSIX: msvcrt.locking is byte-range locking, no flock equivalent.
+    import msvcrt  # type: ignore[import-not-found]
+    _LOCK_FN = None  # signal: use msvcrt.locking in the helper
+    _LOCK_EX = None
+    _LOCK_NB = None
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -800,25 +811,51 @@ def _acquire_singleton_lock() -> int:
     lifetime of the process. If another instance already holds the lock,
     logs a clear error and exits with code 1. On normal exit the OS
     releases the lock automatically when the fd is closed.
+
+    POSIX (Linux/macOS): fcntl.flock with LOCK_EX|LOCK_NB.
+    Windows: msvcrt.locking — operates on a 1-byte range; we open the
+    file in binary mode and try to lock it non-blocking. Windows has no
+    flock(2) equivalent that survives across processes on the same
+    byte, but locking 1 byte on an open file handle is enough to fail
+    when another process already holds the file open.
     """
-    lock_path = "/var/run/moex.lock"
+    if os.name == "posix":
+        lock_path = "/var/run/moex.lock"
+    else:
+        lock_path = os.path.join(tempfile.gettempdir(), "moex.lock")
+    if os.name == "posix":
+        try:
+            fd = open(lock_path, "w")
+        except OSError as exc:
+            logger.error(f"Cannot open lock file {lock_path}: {exc}")
+            sys.exit(1)
+        try:
+            _LOCK_FN(fd, _LOCK_NB | _LOCK_EX)
+        except OSError:
+            logger.error(
+                "Another moex instance already holds the singleton lock. "
+                "If you are sure no other instance is running, delete "
+                f"{lock_path} and restart."
+            )
+            fd.close()
+            sys.exit(1)
+        fd.write(f"{os.getpid()}\n")
+        fd.flush()
+        logger.info(f"Acquired singleton lock at {lock_path} (pid={os.getpid()})")
+        return fd
+    # Windows: msvcrt.locking on a 1-byte handle. Open in binary mode.
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
     try:
-        fd = open(lock_path, "w")
-    except OSError as exc:
-        logger.error(f"Cannot open lock file {lock_path}: {exc}")
-        sys.exit(1)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
     except OSError:
         logger.error(
             "Another moex instance already holds the singleton lock. "
             "If you are sure no other instance is running, delete "
             f"{lock_path} and restart."
         )
-        fd.close()
+        os.close(fd)
         sys.exit(1)
-    fd.write(f"{os.getpid()}\n")
-    fd.flush()
+    os.write(fd, f"{os.getpid()}\n".encode())
     logger.info(f"Acquired singleton lock at {lock_path} (pid={os.getpid()})")
     return fd
 
