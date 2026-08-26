@@ -105,6 +105,39 @@ async def run_intraday_monitor(
                     f"Intraday {ticker} {result.direction} skipped: position already open"
                 )
                 continue
+            # 26.08.2026: если уже есть открытая позиция в ПРОТИВОПОЛОЖНУЮ
+            # сторону — создаём exit-proposal на её закрытие, а новый signal
+            # (long/short) идёт своим proposal'ом. broker_executor уже умеет
+            # атомарный reverse на исполнении; здесь закрываем зазор в
+            # paper-режиме и ускоряем закрытие в sandbox.
+            if existing and existing["side"] != result.direction:
+                prev_side = existing["side"]
+                try:
+                    exit_id = await db.save_robot_proposal(
+                        ticker=ticker,
+                        side=prev_side,
+                        source="intraday_reversal",
+                        signal="exit",
+                        entry_px=existing.get("entry_px"),
+                        qty=abs(int(existing.get("qty") or 0)) or None,
+                        stop_px=None,
+                        take_px=None,
+                        confidence=result.confidence,
+                        reason=(
+                            f"intraday reversal: open {prev_side} on "
+                            f"{ticker} conflicts with new {result.direction} signal"
+                        ),
+                        horizon="intraday",
+                        proposal_mode="paper",
+                    )
+                    logger.info(
+                        f"Intraday {ticker} {result.direction} ({result.signal}): "
+                        f"created exit proposal {exit_id} to close existing {prev_side}"
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"Intraday {ticker} reversal exit-proposal failed: {exc}"
+                    )
 
             # GeoRisk-aware filtering: don't fight the macro/geo wind.
             geo = await db.get_latest_georisk()
