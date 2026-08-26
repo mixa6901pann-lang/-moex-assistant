@@ -20,6 +20,7 @@ from core.config import (
 from strategies.indicators import df_from_candles, add_indicators
 from strategies.risk import calculate_position
 from strategies.fees import apply_slippage
+from core.price_reconcile import shift_stop_take_by_fill, describe_shift
 
 
 async def execute_pending_paper_proposals(
@@ -132,13 +133,31 @@ async def execute_pending_paper_proposals(
                 logger.debug(f"Could not fetch liquidity proxy for {ticker}: {exc}")
             fill_px = apply_slippage(open_px, side=side, spread_pct=spread_pct)
 
+            # 26.08.2026: stop/take были посчитаны от open_px, но в БД
+            # пишем fill_px (с проскальзыванием). При дрейфе >0.3%
+            # сдвигаем стоп и тейк на ту же дельту, чтобы R:R не
+            # искажался.
+            open_stop, open_take, shifted = shift_stop_take_by_fill(
+                open_px, fill_px, plan.stop_px, plan.target_px,
+            )
+            if shifted:
+                logger.info(
+                    describe_shift(
+                        prop["id"], ticker, side,
+                        open_px, fill_px,
+                        plan.stop_px, plan.target_px,
+                        open_stop, open_take,
+                        source="paper",
+                    )
+                )
+
             await db.open_paper_position(
                 ticker=ticker,
                 side=side,
                 entry_px=fill_px,
                 signals_used=(prop.get("reason") or "").split(",") + ["paper_open"],
-                stop_px=plan.stop_px,
-                take_px=plan.target_px,
+                stop_px=open_stop,
+                take_px=open_take,
                 qty=planned_qty,
                 initial_atr=atr,
                 atr_mult=TRAILING_STOP_ATR_MULT,
@@ -147,7 +166,7 @@ async def execute_pending_paper_proposals(
             if executed:
                 logger.info(
                     f"Opened {ticker} {side} qty={planned_qty} at fill={fill_px:.2f} "
-                    f"(open={open_px:.2f}) stop={plan.stop_px:.2f} take={plan.target_px:.2f} "
+                    f"(open={open_px:.2f}) stop={open_stop:.2f} take={open_take:.2f} "
                     f"(proposal {prop['id']})"
                 )
         except Exception as e:

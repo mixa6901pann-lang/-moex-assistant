@@ -23,6 +23,7 @@ from loguru import logger
 
 from core import db
 from core import config as app_config
+from core.price_reconcile import shift_stop_take_by_fill, describe_shift
 
 
 def market_phase() -> str:
@@ -442,35 +443,27 @@ async def run_broker_order_executor(
             else:
                 fill_px = raw_px
 
-            # 26.08.2026: пересчёт stop/take по реальной цене исполнения.
-            # Пользователь мог подтвердить proposal с опозданием, и к
-            # моменту исполнения цена ушла — без сдвига стоп/тейк остаются
-            # на старом расстоянии, риск/профит по позиции искажаются.
-            # delta = fill_px - planned_entry, дальше stop/take сдвигаем
-            # на эту же дельту (абсолютные расстояния сохраняются).
+            # 26.08.2026: при расхождении реальной цены исполнения и
+            # запланированной entry сдвигаем stop и take на ту же дельту.
+            # Хелпер в core/price_reconcile.py — единая логика для broker,
+            # paper и evening. Если дельта <= 0.3%, stop/take остаются
+            # как есть (сдвиг не нужен, чтобы не плодить ложных реатак-ов).
             planned_entry_px = entry_px
-            stop_px_for_position = prop.get("stop_px")
-            take_px_for_position = prop.get("take_px")
-            if (
-                fill_px
-                and planned_entry_px
-                and stop_px_for_position
-                and take_px_for_position
-            ):
-                drift_pct = abs(fill_px - planned_entry_px) / planned_entry_px
-                if drift_pct > 0.003:  # 0.3% — тот же порог, что для entry
-                    delta = fill_px - planned_entry_px
-                    new_stop = round(stop_px_for_position + delta, 4)
-                    new_take = round(take_px_for_position + delta, 4)
-                    logger.info(
-                        f"proposal {prop['id']} {ticker} {side} fill drift "
-                        f"{drift_pct*100:.2f}% > 0.3% "
-                        f"(planned={planned_entry_px:.4f} fill={fill_px:.4f}); "
-                        f"stop {stop_px_for_position:.4f}->{new_stop:.4f}, "
-                        f"take {take_px_for_position:.4f}->{new_take:.4f}"
+            old_stop_px = prop.get("stop_px")
+            old_take_px = prop.get("take_px")
+            stop_px_for_position, take_px_for_position, shifted = shift_stop_take_by_fill(
+                planned_entry_px, fill_px, old_stop_px, old_take_px,
+            )
+            if shifted:
+                logger.info(
+                    describe_shift(
+                        prop["id"], ticker, side,
+                        planned_entry_px, fill_px,
+                        old_stop_px, old_take_px,
+                        stop_px_for_position, take_px_for_position,
+                        source="broker",
                     )
-                    stop_px_for_position = new_stop
-                    take_px_for_position = new_take
+                )
 
             if result.status in (
                 "EXECUTION_REPORT_STATUS_FILL",
