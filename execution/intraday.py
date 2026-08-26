@@ -16,6 +16,14 @@ import core.config as app_config
 # свечи MOEX ISS и last_price брокера Tinkoff, при превышении которого
 # proposal получает entry от брокера, а не от ISS.
 BROKER_PRICE_DRIFT_THRESHOLD = 0.003  # 0.3 %
+
+# 26.08.2026: кэш активных реверсов (ticker, prev_side) -> exit_proposal_id.
+# Живёт в памяти процесса; при рестарте теряется — это OK, broker_executor
+# всё равно исполнит pending exit в ближайший тик. Используется для
+# последовательного реверса: пока exit не закрылся, новый signal в эту
+# сторону не создаётся.
+_pending_reversals: dict[tuple[str, str], int] = {}
+
 from execution.pipeline import ExecutionPipeline, _sector_for_ticker, _sector_impact
 
 
@@ -37,12 +45,36 @@ async def run_intraday_monitor(
     """
     logger.info("Running intraday monitor")
 
+    # 26.08.2026: чистим кэш реверсов — если соответствующий exit уже
+    # закрылся (status=executed), удаляем запись, чтобы новый signal в
+    # эту сторону мог пройти на этом тике.
+    if _pending_reversals:
+        try:
+            for key, exit_id in list(_pending_reversals.items()):
+                prop = await db.get_robot_proposal(exit_id)
+                if prop and prop.get("status") in ("executed", "rejected", "cancelled"):
+                    logger.info(
+                        f"Reversal exit proposal {exit_id} for {key} now {prop['status']}, "
+                        f"releasing slot for new signals"
+                    )
+                    _pending_reversals.pop(key, None)
+        except Exception as exc:
+            logger.debug(f"Reversal cache cleanup failed: {exc}")
+
     screener = await db.latest_screener(limit=10)
     tickers_to_check = [r["ticker"] for r in screener] if screener else [
         "SBER", "GAZP", "LKOH", "GMKN", "NVTK"
     ]
 
     for ticker in tickers_to_check:
+        # 26.08.2026: если для тикера уже есть pending-реверс, не анализируем
+        # его заново — дожидаемся, пока exit закроется. Это сохраняет
+        # последовательность: сначала close existing, потом open new.
+        if any(t == ticker for t, _ in _pending_reversals.keys()):
+            logger.debug(
+                f"Intraday {ticker} skipped: pending reversal in cache"
+            )
+            continue
         try:
             # In the evening session MOEX ISS stops updating 1m candles and
             # starts returning stale daily data disguised as 1m (candle age
@@ -143,12 +175,21 @@ async def run_intraday_monitor(
                     )
                     logger.info(
                         f"Intraday {ticker} {result.direction} ({result.signal}): "
-                        f"created {exit_mode} exit proposal {exit_id} to close existing {prev_side}"
+                        f"created {exit_mode} exit proposal {exit_id} to close existing {prev_side}, "
+                        f"new {result.direction} signal will be queued until exit fills"
                     )
+                    # 26.08.2026: кладём в кэш и пропускаем этот сигнал —
+                    # в следующем тике, когда exit закроется, новый signal
+                    # будет создан заново интрадей-агентом (или ручным
+                    # пользователем).
+                    _pending_reversals[(ticker, prev_side)] = exit_id
                 except Exception as exc:
                     logger.warning(
                         f"Intraday {ticker} reversal exit-proposal failed: {exc}"
                     )
+                # 26.08.2026: при реверсе пропускаем создание основного
+                # proposal в этом тике — последовательность важнее скорости.
+                continue
 
             # GeoRisk-aware filtering: don't fight the macro/geo wind.
             geo = await db.get_latest_georisk()
