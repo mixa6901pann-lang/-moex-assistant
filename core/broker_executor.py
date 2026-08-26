@@ -416,6 +416,55 @@ async def run_broker_order_executor(
                     f"(proposal {prop['id']})"
                 )
 
+            # 27.08.2026: broker-side dedup. The DB dedup above only
+            # checks our local broker_positions, but the broker itself
+            # can already hold a position for this (ticker, side) that
+            # we don't track — e.g. opened manually in the Tinkoff UI,
+            # or carried over from a previous run after a DB reset.
+            # Without this check we'd double-expose: the existing
+            # position stays open AND the new order adds to it.
+            # Reverse block above handles "opposite" cases; this catches
+            # the same-side "phantom" case.
+            skip_proposal = False
+            try:
+                broker_portfolio = await tinkoff.get_portfolio()
+            except Exception as portfolio_exc:
+                logger.warning(
+                    f"Proposal {prop['id']} {ticker} {side}: failed to fetch "
+                    f"broker portfolio for dedup check ({portfolio_exc}); "
+                    f"proceeding with order"
+                )
+                broker_portfolio = None
+            if broker_portfolio is not None:
+                for bp in broker_portfolio.positions:
+                    if bp.ticker.upper() != ticker.upper():
+                        continue
+                    # Tinkoff returns signed quantities: positive = long,
+                    # negative = short. Match against the proposed side.
+                    broker_side = "short" if int(bp.quantity) < 0 else "long"
+                    if broker_side == side:
+                        reason = (
+                            f"broker already has {broker_side} {ticker} "
+                            f"qty={int(bp.quantity)} (not in local DB)"
+                        )
+                    else:
+                        reason = (
+                            f"broker has opposite {broker_side} {ticker} "
+                            f"qty={int(bp.quantity)} (not in local DB); "
+                            f"close manually before retry"
+                        )
+                    logger.info(
+                        f"Proposal {prop['id']} {ticker} {side} skipped: "
+                        f"{reason}"
+                    )
+                    await db.reject_robot_proposal(
+                        prop['id'], decided_by='system', reject_reason=reason,
+                    )
+                    skip_proposal = True
+                    break
+            if skip_proposal:
+                continue
+
             logger.info(
                 f"Submitting {side} market order {ticker}: {lots} lot(s) "
                 f"({real_qty} shares) account={account_id}"
