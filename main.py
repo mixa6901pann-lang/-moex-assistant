@@ -155,6 +155,7 @@ class MoexAssistant:
             pipeline=self.execution_pipeline,
             intraday_agent=intraday_agent,
             resample_1m_to_5m=resample_1m_to_5m,
+            tinkoff_client=self.tinkoff,
             telegram_enabled=self._telegram_enabled,
             send_proposal_alert=self._send_proposal_alert,
             vk_wall=self.vk_wall,

@@ -11,6 +11,11 @@ from core import db
 from core.broker_executor import market_phase
 from core.config import SEMI_AUTO_TRADING, TINKOFF_SANDBOX, TICKER_SECTORS, should_auto_trade
 import core.config as app_config
+
+# 26.08.2026: максимальное расхождение между ценой закрытия 5-минутной
+# свечи MOEX ISS и last_price брокера Tinkoff, при превышении которого
+# proposal получает entry от брокера, а не от ISS.
+BROKER_PRICE_DRIFT_THRESHOLD = 0.003  # 0.3 %
 from execution.pipeline import ExecutionPipeline, _sector_for_ticker, _sector_impact
 
 
@@ -19,6 +24,7 @@ async def run_intraday_monitor(
     pipeline: ExecutionPipeline,
     intraday_agent,
     resample_1m_to_5m,
+    tinkoff_client=None,
     telegram_enabled: bool = False,
     send_proposal_alert=None,
     vk_wall=None,
@@ -131,6 +137,25 @@ async def run_intraday_monitor(
                     )
                     continue
 
+            # 26.08.2026: сверяем entry с last_price у Tinkoff. ISS может отдавать
+            # устаревший close 5m-свечи (лаг до 5 минут), а брокер видит актуальный
+            # стакан. При расхождении >0.3% брокер — источник правды.
+            entry_px = result.entry
+            if tinkoff_client is not None:
+                try:
+                    broker_px = await tinkoff_client.get_ticker_price(ticker)
+                except Exception as e:
+                    logger.debug(f"Intraday {ticker}: broker price fetch failed: {e}")
+                    broker_px = None
+                if broker_px is not None and broker_px > 0:
+                    drift = abs(broker_px - entry_px) / entry_px
+                    if drift > BROKER_PRICE_DRIFT_THRESHOLD:
+                        logger.info(
+                            f"Intraday {ticker} entry drift {drift*100:.2f}% > 0.3% "
+                            f"(iss={entry_px:.4f} broker={broker_px:.4f}), using broker price"
+                        )
+                        entry_px = broker_px
+
             # The pipeline handles sizing, fees, open-position limit and proposal creation.
             proposal_mode = "semi_auto" if (SEMI_AUTO_TRADING or (app_config.AUTO_TRADING_ENABLED and TINKOFF_SANDBOX)) else "paper"
             if proposal_mode == "semi_auto" and should_auto_trade(result.confidence):
@@ -139,7 +164,7 @@ async def run_intraday_monitor(
             pipeline_result = await pipeline.run(
                 ticker=ticker,
                 side=result.direction,
-                entry_px=result.entry,
+                entry_px=entry_px,
                 take_px=result.take,
                 stop_px=result.stop,
                 atr=None,
