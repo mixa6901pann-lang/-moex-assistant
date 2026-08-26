@@ -112,6 +112,17 @@ async def run_intraday_monitor(
             # paper-режиме и ускоряем закрытие в sandbox.
             if existing and existing["side"] != result.direction:
                 prev_side = existing["side"]
+                # 26.08.2026: выбираем proposal_mode так, чтобы broker_executor
+                # подхватил exit-proposal в ближайший 60-секундный тик, а не
+                # ждал утра. AUTO_TRADE → auto_trade, иначе semi_auto при
+                # включённой полуавто-торговле или sandbox+auto-trading, иначе
+                # fallback на paper.
+                if should_auto_trade(result.confidence):
+                    exit_mode = "auto_trade"
+                elif SEMI_AUTO_TRADING or (app_config.AUTO_TRADING_ENABLED and TINKOFF_SANDBOX):
+                    exit_mode = "semi_auto"
+                else:
+                    exit_mode = "paper"
                 try:
                     exit_id = await db.save_robot_proposal(
                         ticker=ticker,
@@ -128,11 +139,11 @@ async def run_intraday_monitor(
                             f"{ticker} conflicts with new {result.direction} signal"
                         ),
                         horizon="intraday",
-                        proposal_mode="paper",
+                        proposal_mode=exit_mode,
                     )
                     logger.info(
                         f"Intraday {ticker} {result.direction} ({result.signal}): "
-                        f"created exit proposal {exit_id} to close existing {prev_side}"
+                        f"created {exit_mode} exit proposal {exit_id} to close existing {prev_side}"
                     )
                 except Exception as exc:
                     logger.warning(
