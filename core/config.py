@@ -228,6 +228,11 @@ AUTO_TRADING_ENABLED = AUTO_TRADING_ENABLED_DEFAULT  # mutable runtime cache
 # допустимость live-ордеров в принципе. По умолчанию False для безопасности.
 AUTO_TRADE = os.getenv("AUTO_TRADE", "false").lower() == "true"
 AUTO_TRADE_MIN_CONFIDENCE = int(os.getenv("AUTO_TRADE_MIN_CONFIDENCE", "70"))
+# 26.08.2026: separate MANUAL_CONFIRM_MIN_CONFIDENCE=55 from auto-trade=65.
+# Применяется к proposal'ам со статусом confirmed (пользователь нажал
+# «Исполнить» в UI), когда AUTO_TRADE выключен. AUTO_TRADE_MIN_CONFIDENCE
+# остаётся для auto_trade-режима (без подтверждения).
+MANUAL_CONFIRM_MIN_CONFIDENCE = int(os.getenv("MANUAL_CONFIRM_MIN_CONFIDENCE", "55"))
 
 
 def should_auto_trade(confidence: int | None) -> bool:
