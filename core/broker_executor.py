@@ -441,6 +441,37 @@ async def run_broker_order_executor(
                 fill_px = entry_px
             else:
                 fill_px = raw_px
+
+            # 26.08.2026: пересчёт stop/take по реальной цене исполнения.
+            # Пользователь мог подтвердить proposal с опозданием, и к
+            # моменту исполнения цена ушла — без сдвига стоп/тейк остаются
+            # на старом расстоянии, риск/профит по позиции искажаются.
+            # delta = fill_px - planned_entry, дальше stop/take сдвигаем
+            # на эту же дельту (абсолютные расстояния сохраняются).
+            planned_entry_px = entry_px
+            stop_px_for_position = prop.get("stop_px")
+            take_px_for_position = prop.get("take_px")
+            if (
+                fill_px
+                and planned_entry_px
+                and stop_px_for_position
+                and take_px_for_position
+            ):
+                drift_pct = abs(fill_px - planned_entry_px) / planned_entry_px
+                if drift_pct > 0.003:  # 0.3% — тот же порог, что для entry
+                    delta = fill_px - planned_entry_px
+                    new_stop = round(stop_px_for_position + delta, 4)
+                    new_take = round(take_px_for_position + delta, 4)
+                    logger.info(
+                        f"proposal {prop['id']} {ticker} {side} fill drift "
+                        f"{drift_pct*100:.2f}% > 0.3% "
+                        f"(planned={planned_entry_px:.4f} fill={fill_px:.4f}); "
+                        f"stop {stop_px_for_position:.4f}->{new_stop:.4f}, "
+                        f"take {take_px_for_position:.4f}->{new_take:.4f}"
+                    )
+                    stop_px_for_position = new_stop
+                    take_px_for_position = new_take
+
             if result.status in (
                 "EXECUTION_REPORT_STATUS_FILL",
                 "EXECUTION_REPORT_STATUS_NEW",
@@ -476,18 +507,26 @@ async def run_broker_order_executor(
                         qty=real_qty,
                         lots=lots,
                         entry_px=fill_px,
-                        stop_px=prop.get("stop_px"),
-                        take_px=prop.get("take_px"),
+                        stop_px=stop_px_for_position,
+                        take_px=take_px_for_position,
                         initial_atr=prop.get("initial_atr"),
                         atr_mult=atr_mult,
                         account_id=account_id,
                         reason="broker fill",
                     )
                     # Place protective stop-loss / take-profit orders.
-                    # Pass the fill_px through prop so the reattach helper
-                    # can detect divergence from the signal entry.
+                    # Pass the fill_px and drift-shifted stop/take through prop
+                    # so the reattach helper can detect divergence from the
+                    # signal entry AND post the shifted protective orders
+                    # instead of the original (now stale) ones. We override
+                    # the original stop_px/take_px keys (not __-prefixed)
+                    # because stops.attach_stop_orders reads them directly.
                     prop_with_fill = dict(prop)
                     prop_with_fill["__fill_px"] = fill_px
+                    if stop_px_for_position is not None:
+                        prop_with_fill["stop_px"] = stop_px_for_position
+                    if take_px_for_position is not None:
+                        prop_with_fill["take_px"] = take_px_for_position
                     await _attach_and_maybe_reattach(
                         tinkoff, ticker, side, lots,
                         prop_with_fill, account_id, result.order_id,
