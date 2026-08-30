@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>MOEX Assistant</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --text: #f0f0f0;
+            --muted: #a0a0a0;
+            --up: #2ecc71;
+            --down: #e74c3c;
+            --border: #2a2a4a;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 80px;
+        }
+        header {
+            background: var(--card);
+            padding: 16px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid var(--border);
+        }
+        h1 { font-size: 20px; font-weight: 700; }
+        .subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+        .nav {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .nav::-webkit-scrollbar { display: none; }
+        .nav-btn {
+            background: var(--accent);
+            border: none;
+            color: var(--text);
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .nav-btn.active { background: var(--highlight); }
+
+        .section { display: none; padding: 0 16px 16px; }
+        .section.active { display: block; }
+
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+        }
+        .card-title {
+            font-size: 14px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .index-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .index-pill {
+            flex: 1;
+            background: var(--bg);
+            border-radius: 12px;
+            padding: 14px;
+            text-align: center;
+        }
+        .index-name { font-size: 12px; color: var(--muted); }
+        .index-value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+        .ticker-list {
+            max-height: 65vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding-right: 4px;
+        }
+        .ticker-list::-webkit-scrollbar { display: none; }
+        .ticker-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+        }
+        .ticker-item:last-child { border-bottom: none; }
+        .ticker-left { display: flex; flex-direction: column; }
+        .ticker-name { font-size: 16px; font-weight: 600; }
+        .ticker-signals { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .ticker-right { text-align: right; }
+        .ticker-score {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--highlight);
+        }
+        .ticker-price { font-size: 13px; color: var(--muted); }
+
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .detail-score {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--highlight);
+        }
+        .detail-signals {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .signal-tag {
+            background: var(--accent);
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .metric {
+            background: var(--bg);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+        }
+        .metric-label { font-size: 11px; color: var(--muted); }
+        .metric-value { font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+        canvas.chart { width: 100%; height: 220px; background: var(--bg); border-radius: 12px; }
+
+        .refresh-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--card);
+            border-top: 1px solid var(--border);
+            padding: 12px 16px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .refresh-btn {
+            flex: 1;
+            background: var(--highlight);
+            border: none;
+            color: #fff;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .status { font-size: 12px; color: var(--muted); align-self: center; }
+
+        .loading { text-align: center; padding: 40px; color: var(--muted); }
+        .error { text-align: center; padding: 20px; color: var(--down); }
+        .disclaimer {
+            font-size: 12px;
+            color: var(--text);
+            background: rgba(241, 196, 15, 0.12);
+            border-left: 3px solid var(--wait);
+            padding: 10px 14px;
+            margin-top: 12px;
+            line-height: 1.4;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>MOEX Assistant</h1>
+        <div class="subtitle">Мобильный терминал</div>
+    </header>
+
+    <nav class="nav">
+        <button class="nav-btn active" onclick="showTab('market')">Рынок</button>
+        <button class="nav-btn" onclick="showTab('screener')">Скринер</button>
+        <button class="nav-btn" onclick="showTab('positions')">Позиции</button>
+    </nav>
+
+    <div id="market" class="section active">
+        <div class="card">
+            <div class="card-title">Индексы</div>
+            <div class="index-row">
+                <div class="index-pill">
+                    <div class="index-name">IMOEX</div>
+                    <div class="index-value" id="idx-imoex">—</div>
+                </div>
+                <div class="index-pill">
+                    <div class="index-name">RTSI</div>
+                    <div class="index-value" id="idx-rtsi">—</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">Watchlist</div>
+            <div class="ticker-list" id="watchlist"></div>
+        </div>
+    </div>
+
+    <div id="screener" class="section">
+        <div class="card">
+            <div class="card-title">Топ по сигналам</div>
+            <div class="ticker-list" id="screener-list"></div>
+        </div>
+    </div>
+
+    <div id="positions" class="section">
+        <div class="card">
+            <div class="card-title">Открытые позиции</div>
+            <div id="positions-list"><div class="loading">Загрузка...</div></div>
+        </div>
+    </div>
+
+    <div id="ticker-detail" class="section">
+        <div class="card">
+            <div class="detail-header">
+                <div>
+                    <h2 id="dt-ticker">TICKER</h2>
+                    <div class="subtitle" id="dt-name"></div>
+                </div>
+                <div class="detail-score" id="dt-score">—</div>
+            </div>
+            <div class="detail-signals" id="dt-signals"></div>
+            <canvas id="chart" class="chart"></canvas>
+            <canvas id="chart-rsi" class="chart" style="height:120px;margin-top:8px;"></canvas>
+            <div class="metrics-grid" id="dt-metrics"></div>
+            <div id="dt-llm" style="display:none;margin-top:12px;padding:12px;background:rgba(15,52,96,0.3);border-radius:12px;border-left:3px solid var(--highlight);">
+                <div style="font-size:12px;color:var(--highlight);margin-bottom:6px;font-weight:600;">🤖 LLM Аналитика</div>
+                <div id="dt-llm-text" style="font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;"></div>
+            </div>
+            <div id="dt-trend" style="display:none;margin-top:8px;font-size:13px;color:var(--muted);"></div>
+            <div class="disclaimer">ℹ️ Данные предоставляются в информационных целях. Не является инвестиционной рекомендацией.</div>
+        </div>
+        <button class="refresh-btn" style="margin: 16px; width: calc(100% - 32px);" onclick="showTab(lastTab || 'screener')">Назад</button>
+    </div>
+
+    <div class="refresh-bar">
+        <button class="refresh-btn" onclick="refreshAll()">Обновить</button>
+        <span class="status" id="status">Готово</span>
+    </div>
+
+    <script>
+        const API = window.location.origin + '/api';
+        const TICKER_NAMES = {
+            SBER:'СберБанк', GAZP:'Газпром', LKOH:'Лукойл', GMKN:'Норникель',
+            NVTK:'НОВАТЭК', ROSN:'Роснефть', TATN:'Татнефть', YNDX:'Яндекс',
+            PLZL:'Полюс', MGNT:'Магнит', MTSS:'МТС', VTBR:'ВТБ',
+            ALRS:'АЛРОСА', CHMF:'Северсталь', NLMK:'НЛМК', POLY:'Полиметалл',
+            OZON:'Ozon', FIVE:'X5 Retail', SNGS:'Сургутнефтегаз', MOEX:'Московская биржа',
+            RUAL:'Русал', AFKS:'АФК Система', PIKK:'ПИК', IRAO:'Интер РАО',
+            PHOR:'ФосАгро', VKCO:'VK', SOFL:'Софтлайн', ASTR:'Астра',
+            SNGSP:'Сургутнефтегаз (прив)', RTKM:'Ростелеком', RTKMP:'Ростелеком (прив)',
+            AFLT:'Аэрофлот', UGLD:'ЮГК'
+        };
+
+        const SIGNAL_NAMES = {
+            'RSI_oversold': 'RSI: перепродан',
+            'RSI_overbought': 'RSI: перекуплен',
+            'MACD_bullish_cross': 'MACD: бычий',
+            'MACD_bearish_cross': 'MACD: медвежий',
+            'VOLUME_spike': 'Объём всплеск',
+            'GAP_up': 'ГЭП ↑',
+            'GAP_down': 'ГЭП ↓',
+            'UPTREND': 'Восход. тренд',
+            'DOWNTREND': 'Нисход. тренд',
+            'BB_upper_touch': 'Верхняя BB',
+            'BB_lower_touch': 'Нижняя BB',
+            'SMA_golden_cross': 'Золотой крест',
+            'SMA_death_cross': 'Мёртвый крест'
+        };
+
+        function translateSignal(s) {
+            return SIGNAL_NAMES[s] || s;
+        }
+
+        let lastTab = 'market';
+        function showTab(id) {
+            if (id !== 'ticker-detail') lastTab = id;
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if (event && event.target && event.target.classList) {
+                event.target.classList.add('active');
+            } else if (id !== 'ticker-detail') {
+                document.querySelectorAll('.nav-btn').forEach(b => {
+                    if (b.getAttribute('onclick')?.includes("'"+id+"'")) b.classList.add('active');
+                });
+            }
+        }
+
+        function setStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+
+        async function refreshAll() {
+            setStatus('Загрузка...');
+            await Promise.all([loadIndices(), loadWatchlist(), loadScreener(), loadPositions()]);
+            setStatus('Обновлено ' + new Date().toLocaleTimeString('ru-RU'));
+        }
+
+        async function loadIndices() {
+            try {
+                const res = await fetch(API + '/indices');
+                const data = await res.json();
+                document.getElementById('idx-imoex').textContent = data.IMOEX ?? '—';
+                document.getElementById('idx-rtsi').textContent = data.RTSI ?? '—';
+            } catch (e) { console.error(e); }
+        }
+
+        async function loadWatchlist() {
+            const container = document.getElementById('watchlist');
+            container.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const res = await fetch(API + '/watchlist');
+                const data = await res.json();
+                container.innerHTML = '';
+                data.items.forEach(item => {
+                    const price = item.price ? item.price.toFixed(2) + ' ₽' : '—';
+                    const div = document.createElement('div');
+                    div.className = 'ticker-item';
+                    div.innerHTML = `
+                        <div class="ticker-left">
+                            <div class="ticker-name">${item.ticker}</div>
+                            <div class="ticker-signals">${TICKER_NAMES[item.ticker] || ''}</div>
+                        </div>
+                        <div class="ticker-right">
+                            <div class="ticker-price">${price}</div>
+                        </div>`;
+                    div.onclick = () => openTicker(item.ticker);
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="error">Ошибка загрузки</div>';
+            }
+        }
+
+        async function loadScreener() {
+            const container = document.getElementById('screener-list');
+            container.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const res = await fetch(API + '/screener?limit=33');
+                const data = await res.json();
+                container.innerHTML = '';
+                data.results.forEach(r => {
+                    const signals = (r.signals || []).slice(0, 2).map(translateSignal).join(', ') || 'нет сигналов';
+                    const price = r.details?.close ? r.details.close.toFixed(2) + ' ₽' : '—';
+                    const div = document.createElement('div');
+                    div.className = 'ticker-item';
+                    div.innerHTML = `
+                        <div class="ticker-left">
+                            <div class="ticker-name">${r.ticker}</div>
+                            <div class="ticker-signals">${signals}</div>
+                        </div>
+                        <div class="ticker-right">
+                            <div class="ticker-score">${(r.score ?? 0).toFixed(1)}</div>
+                            <div class="ticker-price">${price}</div>
+                        </div>`;
+                    div.onclick = () => openTicker(r.ticker);
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="error">Ошибка загрузки</div>';
+            }
+        }
+
+        async function loadPositions() {
+            const container = document.getElementById('positions-list');
+            try {
+                const res = await fetch(API + '/positions');
+                const data = await res.json();
+                if (!data.positions || data.positions.length === 0) {
+                    container.innerHTML = '<div class="loading">Нет открытых позиций</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                data.positions.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'ticker-item';
+                    div.innerHTML = `
+                        <div class="ticker-left">
+                            <div class="ticker-name">${p.ticker}</div>
+                            <div class="ticker-signals">${p.side} | ${p.entry_px} ₽</div>
+                        </div>
+                        <div class="ticker-right">
+                            <div class="ticker-price">${p.qty} лот</div>
+                        </div>`;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="error">Ошибка загрузки</div>';
+            }
+        }
+
+        async function openTicker(ticker) {
+            const active = document.querySelector('.section.active');
+            if (active && active.id !== 'ticker-detail') lastTab = active.id;
+            setStatus('Анализ ' + ticker + '...');
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById('ticker-detail').classList.add('active');
+            try {
+                const res = await fetch(API + '/ticker/' + ticker);
+                const d = await res.json();
+                document.getElementById('dt-ticker').textContent = d.ticker;
+                document.getElementById('dt-name').textContent = TICKER_NAMES[d.ticker] || '';
+                document.getElementById('dt-score').textContent = (d.score ?? 0).toFixed(1);
+
+                const sigContainer = document.getElementById('dt-signals');
+                sigContainer.innerHTML = '';
+                (d.signals || []).forEach(s => {
+                    const span = document.createElement('span');
+                    span.className = 'signal-tag';
+                    span.textContent = translateSignal(s);
+                    sigContainer.appendChild(span);
+                });
+
+                const metrics = document.getElementById('dt-metrics');
+                metrics.innerHTML = `
+                    <div class="metric"><div class="metric-label">Цена</div><div class="metric-value">${d.price?.toFixed(2) ?? '—'}</div></div>
+                    <div class="metric"><div class="metric-label">RSI</div><div class="metric-value">${d.rsi?.toFixed(1) ?? '—'}</div></div>
+                    <div class="metric"><div class="metric-label">MACD</div><div class="metric-value">${d.macd_hist?.toFixed(3) ?? '—'}</div></div>
+                    <div class="metric"><div class="metric-label">ATR</div><div class="metric-value">${d.atr?.toFixed(2) ?? '—'}</div></div>
+                `;
+
+                drawChart(d.candles || []);
+                drawRsiChart(d.chart_data || []);
+
+                const llmBox = document.getElementById('dt-llm');
+                if(d.llm_analysis) {
+                    llmBox.style.display = 'block';
+                    document.getElementById('dt-llm-text').textContent = d.llm_analysis;
+                } else {
+                    llmBox.style.display = 'none';
+                }
+
+                const trendBox = document.getElementById('dt-trend');
+                if(d.higher_tf_trend) {
+                    trendBox.style.display = 'block';
+                    const trendMap = {'UPTREND': '📈 Восходящий недельный тренд', 'DOWNTREND': '📉 Нисходящий недельный тренд', 'NEUTRAL': '➡️ Нейтральный недельный тренд'};
+                    trendBox.textContent = trendMap[d.higher_tf_trend] || d.higher_tf_trend;
+                } else {
+                    trendBox.style.display = 'none';
+                }
+
+                setStatus('Готово');
+            } catch (e) {
+                setStatus('Ошибка загрузки тикера');
+            }
+        }
+
+        function drawChart(candles) {
+            const canvas = document.getElementById('chart');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+
+            const w = rect.width, h = rect.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (candles.length < 2) {
+                ctx.fillStyle = '#a0a0a0';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Недостаточно данных', w/2, h/2);
+                return;
+            }
+
+            const prices = candles.map(c => c.close);
+            const min = Math.min(...prices), max = Math.max(...prices);
+            const range = max - min || 1;
+            const pad = 20;
+
+            // Grid
+            ctx.strokeStyle = '#2a2a4a';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = pad + (h - 2*pad) * i / 4;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            }
+
+            // Line
+            ctx.strokeStyle = '#e94560';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            candles.forEach((c, i) => {
+                const x = (i / (candles.length - 1)) * (w - 2*pad) + pad;
+                const y = pad + (1 - (c.close - min) / range) * (h - 2*pad);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Fill
+            ctx.fillStyle = 'rgba(233, 69, 96, 0.1)';
+            ctx.lineTo(w - pad, h - pad);
+            ctx.lineTo(pad, h - pad);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawRsiChart(rows) {
+            const canvas = document.getElementById('chart-rsi');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+
+            const w = rect.width, h = rect.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const rsiRows = rows.filter(r => r.rsi != null);
+            if (rsiRows.length < 2) return;
+
+            const pad = 10;
+            const min = 0, max = 100;
+            const range = 100;
+
+            // Grid lines at 30 and 70
+            ctx.strokeStyle = '#2a2a4a';
+            ctx.lineWidth = 1;
+            [30, 70].forEach(level => {
+                const y = pad + (1 - (level - min) / range) * (h - 2*pad);
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            });
+
+            // RSI line
+            ctx.strokeStyle = '#2ecc71';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            rsiRows.forEach((r, i) => {
+                const x = (i / (rsiRows.length - 1)) * (w - 2*pad) + pad;
+                const y = pad + (1 - (r.rsi - min) / range) * (h - 2*pad);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        // Initial load
+        refreshAll();
+        // Auto refresh every 60s
+        setInterval(refreshAll, 60000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.server
+*.env.backup
+*.env.copy
+*.env.local
+*.key
+*.pem
+*.secret
+*.token
+secrets/
+
+# Archives with possible secrets
+*.zip
+*.tar.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+.venv312/
+
+# Data and logs
+data/moex.db
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+.private/

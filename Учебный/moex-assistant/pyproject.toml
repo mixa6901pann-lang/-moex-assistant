@@ -1,0 +1,34 @@
+[project]
+name = "moex-assistant"
+version = "0.1.0"
+description = "Intelligent assistant for Russian stock market speculation"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+    "apscheduler>=3.10",
+    "tenacity>=8.2",
+    "aiohttp>=3.9",
+    "loguru>=0.7",
+    "fastapi>=0.136",
+    "starlette>=1.2",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "pywebview>=5.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

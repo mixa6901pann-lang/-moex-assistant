@@ -1,0 +1,2414 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOEX Assistant Desktop</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #2b2b2b;
+            --sidebar: #1e1e1e;
+            --card: #3d3d3d;
+            --accent: #1f6aa5;
+            --accent-hover: #2b8fd8;
+            --text: #ffffff;
+            --muted: #a0a0a0;
+            --border: #404040;
+            --up: #2ecc71;
+            --down: #e74c3c;
+            --wait: #f1c40f;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 200px;
+            background: var(--sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+            flex-shrink: 0;
+        }
+        .logo { padding: 0 20px 10px; font-size: 18px; font-weight: 700; }
+        .logo small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+        .nav-item {
+            padding: 10px 20px;
+            margin: 2px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: .2s;
+            color: var(--muted);
+        }
+        .nav-item:hover { background: var(--card); color: var(--text); }
+        .nav-item.active { background: var(--accent); color: #fff; }
+        .nav-exit {
+            margin-top: auto;
+            padding: 10px 20px;
+            color: #e74c3c;
+            cursor: pointer;
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+        .nav-exit:hover { background: #3d0000; }
+
+        /* Main */
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar {
+            height: 50px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 12px;
+        }
+        .topbar h2 { font-size: 22px; font-weight: 600; }
+        .badge {
+            background: var(--accent);
+            padding: 4px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+        }
+
+        .section { display: none; }
+        .section.active { display: block; }
+
+        /* Info row */
+        .info-row { display: flex; gap: 20px; margin-bottom: 12px; font-size: 15px; }
+        .info-row span { color: var(--muted); }
+        .info-row strong { color: var(--text); margin-left: 4px; font-weight: 600; }
+
+        /* Signals */
+        .signals-wrap { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .signal-tag {
+            background: var(--card);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            border: 1px solid var(--border);
+        }
+
+        /* Charts */
+        .chart-wrap {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        .chart-wrap canvas { max-height: 260px; }
+        .chart-wrap.small canvas { max-height: 160px; }
+
+        /* Recommendation */
+        .rec-box { margin: 12px 0; }
+        .rec-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+        .rec-text { font-size: 14px; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
+.rec-warn { font-size: 13px; color: var(--wait); margin-top: 4px; }
+        .rec-critic { font-size: 12px; color: var(--text); margin-top: 8px; padding: 8px 10px; background: var(--card); border-left: 3px solid var(--accent); border-radius: 4px; }
+        .rec-critic.no { border-left-color: var(--down); }
+        .rec-critic.partial { border-left-color: var(--wait); }
+        .rec-critic.yes { border-left-color: var(--up); }
+        .rec-critic.unavailable { border-left-color: var(--muted); font-style: italic; }
+        .rec-liquidity { font-size: 12px; color: var(--muted); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+        .rec-liquidity.low { color: var(--wait); font-weight: 600; }
+
+        .summary-pill {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 12px;
+            color: #fff;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .summary-pill:hover { opacity: 0.8; }
+        .summary-pill.bull { background: var(--up); }
+        .summary-pill.bear { background: var(--down); }
+        .summary-pill.neutral { background: var(--muted); }
+
+        /* LLM box */
+        .llm-box {
+            background: var(--card);
+            border-radius: 6px;
+            padding: 14px;
+            border-left: 3px solid var(--accent);
+            margin-top: 12px;
+        }
+        .llm-title { font-size: 13px; color: var(--accent); margin-bottom: 6px; font-weight: 600; }
+        .llm-text { font-size: 13px; line-height: 1.6; color: var(--text); white-space: pre-wrap; }
+        .llm-warn { font-size: 12px; color: var(--wait); margin-top: 8px; }
+        .disclaimer {
+            font-size: 12px;
+            color: var(--text);
+            background: rgba(241, 196, 15, 0.12);
+            border-left: 3px solid var(--wait);
+            padding: 10px 14px;
+            margin-top: 12px;
+            line-height: 1.4;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .btn {
+            background: var(--accent);
+            border: none;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* Card grid */
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .card {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 14px;
+            border: 1px solid var(--border);
+        }
+        .card-title {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 10px;
+        }
+        .metric-row { display: flex; gap: 10px; }
+        .metric { flex: 1; background: var(--bg); border-radius: 6px; padding: 10px; text-align: center; }
+        .metric-label { font-size: 11px; color: var(--muted); }
+        .metric-value { font-size: 18px; font-weight: 700; margin-top: 3px; }
+
+        /* Ticker list */
+        .ticker-list { max-height: 55vh; overflow-y: auto; }
+        .ticker-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+        }
+        .ticker-item:hover { padding-left: 6px; color: var(--accent-hover); }
+        .ticker-item:last-child { border-bottom: none; }
+        .ticker-name { font-weight: 600; font-size: 15px; }
+        .ticker-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
+        .ticker-right { text-align: right; }
+        .ticker-score { font-size: 17px; font-weight: 700; color: var(--accent-hover); }
+        .ticker-price { font-size: 13px; color: var(--muted); }
+
+        .form-row { display: flex; gap: 10px; margin-bottom: 12px; }
+        select {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            flex: 1;
+        }
+        .empty { text-align: center; padding: 30px; color: var(--muted); }
+        .status-bar { font-size: 12px; color: var(--muted); margin-left: auto; }
+        textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .sentiment-bullish { border-left-color: var(--up) !important; }
+        .sentiment-bearish { border-left-color: var(--down) !important; }
+        .sentiment-neutral { border-left-color: var(--wait) !important; }
+        .badge-correct { background: var(--up); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-wrong   { background: var(--down); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-pending { background: var(--muted); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-source { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; background: var(--card); color: var(--text); border: 1px solid var(--border); }
+        .badge-trading_agent { background: #1f6aa5; color: #fff; border-color: #1f6aa5; }
+        .badge-analysis { background: #5a5a5a; color: #fff; border-color: #5a5a5a; }
+        .badge-screener { background: #7d5ba6; color: #fff; border-color: #7d5ba6; }
+
+        .proposal-card {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+        .proposal-card.pending { border-left: 4px solid var(--wait); }
+        .proposal-card.confirmed { border-left: 4px solid var(--up); }
+        .proposal-card.rejected { border-left: 4px solid var(--down); }
+        .proposal-card.executed { border-left: 4px solid var(--accent); }
+        .proposal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .proposal-title {
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .proposal-meta {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+        .proposal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .btn-confirm { background: var(--up); }
+        .btn-confirm:hover { background: #27ae60; }
+        .btn-reject { background: var(--down); }
+        .btn-reject:hover { background: #c0392b; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo">MOEX Assistant<small>Desktop</small></div>
+        <div class="nav-item active" onclick="showPage('home', this)">Главная</div>
+        <div class="nav-item" onclick="showPage('screener', this)">Скринер</div>
+        <div class="nav-item" onclick="showPage('analysis', this)">Анализ</div>
+        <div class="nav-item" onclick="showPage('intraday', this)">Интрадей</div>
+        <div class="nav-item" onclick="showPage('proposals', this)">Предложения робота</div>
+        <div class="nav-item" onclick="showPage('sandbox', this)">Песочница</div>
+        <div class="nav-item" onclick="showPage('diary', this)">Дневник</div>
+        <div class="nav-item" onclick="showPage('settings', this)">Настройки</div>
+        <div class="nav-exit" onclick="if(window.pywebview&&window.pywebview.api){window.pywebview.api.exit();}else{window.close();}">Выход</div>
+    </aside>
+
+    <div class="main">
+        <div class="topbar">
+            <h2 id="page-title">Главная</h2>
+            <span class="badge" id="page-badge"></span>
+            <span class="status-bar" id="status">Готово</span>
+        </div>
+
+        <div class="content">
+            <!-- HOME -->
+            <div id="home" class="section active">
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-title">Индексы</div>
+                        <div class="metric-row">
+                            <div class="metric"><div class="metric-label">IMOEX</div><div class="metric-value" id="idx-imoex">—</div></div>
+                            <div class="metric"><div class="metric-label">RTSI</div><div class="metric-value" id="idx-rtsi">—</div></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Рыночная сводка</div>
+                        <div class="metric-row">
+                            <div class="metric"><div class="metric-label">Всего</div><div class="metric-value" id="watch-count">—</div></div>
+                            <div class="metric"><div class="metric-label">Бычьих</div><div class="metric-value" id="bull-count" style="color:var(--up)">—</div></div>
+                            <div class="metric"><div class="metric-label">Медвежьих</div><div class="metric-value" id="bear-count" style="color:var(--down)">—</div></div>
+                        </div>
+                        <div id="market-summary-tickers" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+                    </div>
+                </div>
+                <div class="card" style="margin-top:12px">
+                    <div class="card-title">Watchlist — текущие цены</div>
+                    <div class="ticker-list" id="watchlist"></div>
+                </div>
+            </div>
+
+            <!-- SCREENER -->
+            <div id="screener" class="section">
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <div class="card-title" style="margin:0">Скринер — ТОП сигналов</div>
+                        <button class="btn" onclick="runScreener()">Обновить</button>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+                        <button class="btn" id="filter-all" onclick="setScreenerFilter('all')">Все</button>
+                        <button class="btn" id="filter-bull" onclick="setScreenerFilter('bull')">Бычьи</button>
+                        <button class="btn" id="filter-bear" onclick="setScreenerFilter('bear')">Медвежьи</button>
+                        <button class="btn" id="filter-neutral" onclick="setScreenerFilter('neutral')">Нейтральные</button>
+                    </div>
+                    <div class="ticker-list" id="screener-list"></div>
+                </div>
+            </div>
+
+            <!-- ANALYSIS -->
+            <div id="analysis" class="section">
+                <div class="form-row">
+                    <input type="text" list="ticker-datalist" id="ticker-select" onchange="loadAnalysis(this.value)" placeholder="Введите тикер..." style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;">
+                    <datalist id="ticker-datalist"></datalist>
+                    <button class="btn" onclick="loadAnalysis(document.getElementById('ticker-select').value)">Загрузить</button>
+                </div>
+
+                <div id="analysis-content">
+                    <div class="info-row">
+                        <span>Цена: <strong id="an-price">—</strong></span>
+                        <span>Сигналы: <strong id="an-signals-text">—</strong></span>
+                    </div>
+
+                    <div class="chart-wrap"><canvas id="chart-price"></canvas></div>
+                    <div class="chart-wrap small"><canvas id="chart-rsi"></canvas></div>
+
+                    <div class="rec-box">
+                        <div class="rec-title" id="an-rec-title">Рекомендация: —</div>
+                        <div class="rec-text" id="an-rec-text"></div>
+                        <div class="rec-warn" id="an-rec-warn"></div>
+                        <div class="rec-liquidity" id="an-rec-liquidity"></div>
+                        <div class="rec-critic" id="an-rec-critic" style="display:none"></div>
+                    </div>
+
+                    <div class="card" id="an-bounce-box" style="display:none;margin:12px 0;border-left:3px solid var(--accent)">
+                        <div class="card-title" style="margin-bottom:10px">📊 Предиктор разворота (отскока)</div>
+                        <div class="metric-row">
+                            <div class="metric"><div class="metric-label">Вероятность</div><div class="metric-value" id="an-bounce-prob">—</div></div>
+                            <div class="metric"><div class="metric-label">Направление</div><div class="metric-value" id="an-bounce-dir">—</div></div>
+                            <div class="metric"><div class="metric-label">Уверенность</div><div class="metric-value" id="an-bounce-conf">—</div></div>
+                        </div>
+                        <div style="font-size:12px;color:var(--muted);margin-top:8px" id="an-bounce-trend">—</div>
+                        <div style="font-size:12px;color:var(--muted);margin-top:6px;white-space:pre-line" id="an-bounce-reasons">—</div>
+                    </div>
+
+                    <div class="card" id="an-levels-box" style="display:none;margin:12px 0">
+                        <div class="card-title" style="margin-bottom:8px">Уровни сделки (авторасчёт)</div>
+                        <div class="metric-row">
+                            <div class="metric"><div class="metric-label">Вход</div><div class="metric-value" id="an-entry">—</div></div>
+                            <div class="metric"><div class="metric-label">Стоп</div><div class="metric-value" id="an-stop" style="color:var(--down)">—</div></div>
+                            <div class="metric"><div class="metric-label">Тейк</div><div class="metric-value" id="an-take" style="color:var(--up)">—</div></div>
+                        </div>
+                    </div>
+
+                    <div class="card" id="an-vp-box" style="display:none;margin:12px 0">
+                        <div class="card-title" style="margin-bottom:8px">Объемный профиль (часовики)</div>
+                        <div class="metric-row">
+                            <div class="metric"><div class="metric-label">POC</div><div class="metric-value" id="an-vp-poc">—</div></div>
+                            <div class="metric"><div class="metric-label">Value Area Low</div><div class="metric-value" id="an-vp-val-low">—</div></div>
+                            <div class="metric"><div class="metric-label">Value Area High</div><div class="metric-value" id="an-vp-val-high">—</div></div>
+                        </div>
+                        <div style="font-size:12px;color:var(--muted);margin-top:6px">
+                            POC — уровень максимального объема. Value Area — зона 70% объема (сильные уровни).
+                        </div>
+                    </div>
+
+                    <!-- News Sentiment -->
+                    <div class="card" id="an-news-box" style="margin:12px 0">
+                        <div class="card-title" style="margin-bottom:8px">📰 Новости и сентимент</div>
+                        <textarea id="an-news-input" rows="3" placeholder="Вставьте новости или заголовки сюда (по одному на строку)..."></textarea>
+                        <div style="display:flex;gap:10px;margin-top:8px">
+                            <button class="btn" id="an-sentiment-btn" onclick="analyzeSentiment()" disabled>Анализ сентимента</button>
+                            <button class="btn" style="background:var(--card);color:var(--text);border:1px solid var(--border)" onclick="includeNewsInAnalysis()">Учесть в анализе</button>
+                        </div>
+                        <div id="an-sentiment-result" style="display:none;margin-top:10px;padding:10px;border-radius:6px;background:var(--bg);border-left:3px solid var(--accent)">
+                            <div style="font-size:13px;font-weight:600;margin-bottom:4px" id="an-sentiment-title"></div>
+                            <div style="font-size:12px;color:var(--muted)" id="an-sentiment-text"></div>
+                        </div>
+                    </div>
+
+                    <div class="disclaimer" id="an-disclaimer">
+                        ℹ️ Данные предоставляются в информационных целях. Не является инвестиционной рекомендацией.
+                    </div>
+
+                    <div class="llm-box" id="an-llm-box" style="display:none">
+                        <div class="llm-title">🤖 LLM Аналитика</div>
+                        <div class="llm-text" id="an-llm"></div>
+                        <div class="llm-warn" id="an-llm-warn"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INTRADAY -->
+            <div id="intraday" class="section">
+                <div class="form-row">
+                    <select id="intraday-select" onchange="loadIntraday(this.value)">
+                        <option value="">Выберите тикер...</option>
+                    </select>
+                    <button class="btn" onclick="loadIntraday(document.getElementById('intraday-select').value, true)">Обновить</button>
+                </div>
+
+                <div id="intraday-info" class="info-row" style="flex-wrap:wrap">
+                    <span>Цена: <strong id="id-price">—</strong></span>
+                    <span>До high: <strong id="id-high">—</strong></span>
+                    <span>До low: <strong id="id-low">—</strong></span>
+                    <span>VWAP: <strong id="id-vwap">—</strong></span>
+                    <span>RSI: <strong id="id-rsi">—</strong></span>
+                    <span>Спред: <strong id="id-spread">—</strong></span>
+                </div>
+
+                <div class="chart-wrap">
+                    <canvas id="chart-intraday"></canvas>
+                </div>
+
+                <div class="rec-box">
+                    <div class="rec-title" id="id-rec-title">Рекомендация: —</div>
+                    <div class="rec-text" id="id-rec-text"></div>
+                    <div class="rec-warn" id="id-rec-warn"></div>
+                </div>
+
+                <div class="card" id="id-levels-box" style="display:none;margin:12px 0">
+                    <div class="card-title" style="margin-bottom:8px">Уровни сделки (10м)</div>
+                    <div class="metric-row">
+                        <div class="metric"><div class="metric-label">Вход</div><div class="metric-value" id="id-entry">—</div></div>
+                        <div class="metric"><div class="metric-label">Стоп</div><div class="metric-value" id="id-stop" style="color:var(--down)">—</div></div>
+                        <div class="metric"><div class="metric-label">Тейк</div><div class="metric-value" id="id-take" style="color:var(--up)">—</div></div>
+                    </div>
+                </div>
+
+                <div class="llm-box" id="id-llm-box" style="display:none">
+                    <div class="llm-title">🤖 LLM подтверждение (<span id="id-llm-provider">—</span>)</div>
+                    <div class="llm-text" id="id-llm"></div>
+                </div>
+
+                <div class="disclaimer">
+                    ℹ️ Интрадей-сигналы — краткосрочные. Не является инвестиционной рекомендацией.
+                </div>
+            </div>
+
+            <!-- PROPOSALS -->
+            <div id="proposals" class="section">
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <div class="card-title" style="margin:0">Предложения торгового робота</div>
+                        <div style="display:flex;gap:8px">
+                            <select id="proposal-filter" onchange="loadProposals()" style="width:auto">
+                                <option value="">Все</option>
+                                <option value="pending" selected>Ожидают решения</option>
+                                <option value="confirmed">Подтверждены</option>
+                                <option value="rejected">Отклонены</option>
+                                <option value="executed">Исполнены</option>
+                            </select>
+                            <button class="btn" style="padding:4px 10px;font-size:12px" onclick="loadProposals()">Обновить</button>
+                            <button class="btn" style="padding:4px 10px;font-size:12px;background:var(--down)" onclick="cleanupProposals()" title="Удалить api_ticker и все ожидающие предложения">Очистить</button>
+                        </div>
+                    </div>
+                    <div id="proposals-list">
+                        <div style="color:var(--muted);padding:12px 0">Загрузка...</div>
+                    </div>
+                </div>
+
+                <div class="disclaimer">
+                    ℹ️ Робот работает в полуавтоматическом режиме: он предлагает сделки, но исполняет их только после вашего подтверждения. Подтверждение не отправляет ордер брокеру — оно лишь отмечает ваше решение в журнале.
+                </div>
+            </div>
+
+            <!-- SANDBOX -->
+            <div id="sandbox" class="section">
+                <!-- 1. Sandbox portfolio summary -->
+                <div class="card">
+                    <div class="card-title">Песочница Тинькофф — портфель</div>
+                    <div class="metric-row">
+                        <div class="metric">
+                            <div class="metric-label">Стоимость портфеля</div>
+                            <div class="metric-value" id="sb-total">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Свободно денег</div>
+                            <div class="metric-value" id="sb-cash">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Позиций</div>
+                            <div class="metric-value" id="sb-count">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">ID счёта</div>
+                            <div class="metric-value" id="sb-account" style="font-size:12px">—</div>
+                        </div>
+                    </div>
+                    <div id="sandbox-phantom-banner" style="display:none"></div>
+                    <div id="sandbox-positions-list" style="margin-top:12px">
+                        <div style="color:var(--muted);padding:8px 0">Загрузка...</div>
+                    </div>
+                </div>
+
+                <!-- 3. Sandbox orders -->
+                <div class="card" style="margin-top:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <div class="card-title" style="margin:0">Сделки в песочнице</div>
+                        <button class="btn" style="padding:4px 10px;font-size:12px" onclick="loadSandboxPage()">Обновить</button>
+                    </div>
+                    <div id="sandbox-orders-stats" style="display:flex;gap:8px;margin-bottom:10px;font-size:12px"></div>
+                    <div id="sandbox-orders-list">
+                        <div style="color:var(--muted);padding:12px 0">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div id="settings" class="section">
+                <div class="card">
+                    <div class="card-title">Настройки</div>
+                    <p style="color:var(--muted);font-size:14px;line-height:1.6">
+                        Параметры управляются через файл <code>.env</code> на сервере.<br><br>
+                        <strong>LLM-провайдер:</strong> <span id="st-llm">Ollama (локально)</span><br>
+                        <strong>Модель:</strong> <span id="st-model">gemma3:4b</span><br>
+                        <strong>Max риск на позицию:</strong> <span id="st-risk">2.0</span>%<br>
+                        <strong>Max открытых позиций:</strong> <span id="st-pos">5</span><br>
+                    </p>
+                    <div style="margin: 16px 0; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;">
+                        <label style="display:flex; align-items:center; gap:12px; cursor:pointer; font-size:15px;">
+                            <input type="checkbox" id="st-auto-toggle" onchange="toggleAutoTrading(this)" style="width:18px; height:18px; accent-color: var(--accent);">
+                            <span><strong>Автоторговля в песочнице</strong> — робот сам отправляет заявки в Tinkoff Sandbox</span>
+                        </label>
+                        <div style="margin-top:10px; font-size:13px; color:var(--muted); line-height:1.5;">
+                            Режим: <span id="st-mode">—</span>
+                            <span id="st-auto-status" style="display:block; margin-top:4px;"></span>
+                        </div>
+                    </div>
+                    <div style="margin: 0 0 16px 0; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;">
+                        <label style="display:flex; align-items:center; gap:12px; cursor:pointer; font-size:15px;">
+                            <input type="checkbox" id="st-autotrade-toggle" onchange="toggleAutoTrade(this)" style="width:18px; height:18px; accent-color: var(--accent);">
+                            <span><strong>Авто-исполнение предложений</strong> — робот сам берёт сигналы с confidence ≥ <span id="st-autotrade-min">70</span> без подтверждения</span>
+                        </label>
+                        <div style="margin-top:10px; font-size:13px; color:var(--muted); line-height:1.5;">
+                            <span id="st-autotrade-status"></span>
+                        </div>
+                    </div>
+                    <button class="btn" onclick="refreshAll()" style="margin-top:12px">Обновить данные</button>
+                </div>
+            </div>
+
+            <!-- DIARY -->
+            <div id="diary" class="section">
+                <!-- 1. Virtual portfolio -->
+                <div class="card">
+                    <div class="card-title">Виртуальный счёт</div>
+                    <div class="metric-row">
+                        <div class="metric">
+                            <div class="metric-label">Текущий / Начальный</div>
+                            <div class="metric-value" id="pt-current">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Доходность</div>
+                            <div class="metric-value" id="pt-return">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Прибыльных сделок</div>
+                            <div class="metric-value" id="pt-winrate">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Сделок / Открыто</div>
+                            <div class="metric-value" id="pt-trades">—</div>
+                        </div>
+                    </div>
+                    <div id="paper-positions-list" style="margin-top:12px">
+                        <div style="color:var(--muted);padding:8px 0">Нет позиций.</div>
+                    </div>
+                </div>
+
+                <!-- 2. Diary prediction accuracy -->
+                <div class="card" style="margin-top:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <div class="card-title" style="margin:0">Точность прогнозов (торговых дней)</div>
+                        <div style="display:flex;gap:8px">
+                            <select id="diary-source-filter" onchange="loadDiary()" style="width:auto">
+                                <option value="">Все источники</option>
+                                <option value="trading_agent">🤖 TradingAgent</option>
+                                <option value="analysis">📊 Анализ тикера</option>
+                                <option value="screener">🔍 Скринер</option>
+                            </select>
+                            <button class="btn" style="padding:4px 10px;font-size:12px" onclick="resetPredictions()">Обнулить</button>
+                        </div>
+                    </div>
+                    <div class="metric-row">
+                        <div class="metric">
+                            <div class="metric-label">1 торг. день</div>
+                            <div class="metric-value" id="di-acc-1d">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">3 торг. дня</div>
+                            <div class="metric-value" id="di-acc-3d">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">7 торг. дней</div>
+                            <div class="metric-value" id="di-acc-7d">—</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Всего прогнозов</div>
+                            <div class="metric-value" id="di-total">—</div>
+                        </div>
+                    </div>
+                    <div id="diary-list" style="margin-top:12px">
+                        <div style="color:var(--muted);padding:8px 0">Загрузка...</div>
+                    </div>
+                </div>
+
+                <!-- 3. Source performance -->
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <div class="card-title" style="margin:0">Эффективность по источникам сигналов</div>
+                        <button class="btn" style="padding:4px 10px;font-size:12px" onclick="loadSourceStats()">Обновить</button>
+                    </div>
+                    <div id="source-stats-list" style="margin-top:12px">
+                        <div style="color:var(--muted);padding:8px 0">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.origin + '/api';
+        const TICKERS = ['SBER','GAZP','LKOH','GMKN','NVTK','ROSN','TATN','PLZL','MGNT','MTSS','VTBR','ALRS','CHMF','NLMK','OZON','SNGS','MOEX','IRAO','VKCO','SOFL','ASTR','RTKM','RTKMP','AFLT'];
+        const NAMES = {
+            SBER:'СберБанк', GAZP:'Газпром', LKOH:'Лукойл', GMKN:'Норникель', NVTK:'НОВАТЭК', ROSN:'Роснефть', TATN:'Татнефть',
+            PLZL:'Полюс', MGNT:'Магнит', MTSS:'МТС', VTBR:'ВТБ', ALRS:'АЛРОСА', CHMF:'Северсталь', NLMK:'НЛМК',
+            OZON:'Ozon', SNGS:'Сургутнефтегаз', MOEX:'Московская биржа',
+            IRAO:'Интер РАО', VKCO:'VK', SOFL:'Софтлайн', ASTR:'Астра',
+            RTKM:'Ростелеком', RTKMP:'Ростелеком (прив)', AFLT:'Аэрофлот'
+        };
+        const SGNAMES = {
+            'RSI_oversold':'RSI перепродан','RSI_overbought':'RSI перекуплен',
+            'MACD_bullish_cross':'MACD бычий кросс','MACD_bearish_cross':'MACD медвежий кросс',
+            'BB_lower_touch':'BB нижняя граница','BB_upper_touch':'BB верхняя граница',
+            'UPTREND':'Восходящий тренд','DOWNTREND':'Нисходящий тренд',
+            'VOLUME_spike':'Всплеск объёма','GAP_up':'Гэп вверх','GAP_down':'Гэп вниз'
+        };
+        function ts(s){ return SGNAMES[s] || s; }
+
+        const BLUE_CHIPS = ['SBER','GAZP','LKOH','GMKN','NVTK','ROSN','TATN','PLZL','MGNT','MTSS','VTBR','ALRS','CHMF','NLMK','SNGS','MOEX','IRAO'];
+
+        let priceChart = null, rsiChart = null, intradayChart = null;
+        let analysisData = null;
+        let _sentimentCache = {}; // ticker -> {sentiment, confidence}
+        let currentIntradayTicker = null;
+        let _intradayTimer = null;
+
+        // Format a UTC timestamp string from the backend as Moscow time (MSK, UTC+3).
+        function formatMskDateTime(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts + 'Z');
+            if (isNaN(d)) return ts;
+            return d.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+        }
+        function formatMskDate(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts + 'Z');
+            if (isNaN(d)) return ts;
+            return d.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
+        }
+
+        function showPage(id, el) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if(el) el.classList.add('active');
+            const titles = {home:'Главная', screener:'Скринер', analysis:'Анализ', intraday:'Интрадей', proposals:'Предложения робота', sandbox:'Песочница', diary:'Дневник', settings:'Настройки'};
+            document.getElementById('page-title').textContent = titles[id] || id;
+            document.getElementById('page-badge').textContent = '';
+            if(id === 'analysis') {
+                const sel = document.getElementById('ticker-select');
+                if(sel.value) loadAnalysis(sel.value);
+            }
+            if(id === 'intraday') {
+                const sel = document.getElementById('intraday-select');
+                _startIntradayTimer();
+                if(sel && sel.value) loadIntraday(sel.value, false);
+            } else {
+                _stopIntradayTimer();
+            }
+            if(id === 'diary') loadDiary();
+            if(id === 'proposals') loadProposals();
+            if(id === 'sandbox') loadSandboxPage();
+            if(id === 'settings') loadAutoTrading();
+        }
+        function setStatus(t){ document.getElementById('status').textContent = t; }
+
+        async function loadAutoTrading() {
+            try {
+                const res = await fetch(API + '/settings/auto_trading');
+                if (!res.ok) throw new Error(res.statusText);
+                const data = await res.json();
+                const cb = document.getElementById('st-auto-toggle');
+                if (cb) cb.checked = data.auto_trading_enabled;
+
+                const modeMap = { paper: 'бумажная торговля', semi_auto: 'подтверждение → песочница', live: 'реальный счёт' };
+                const modeEl = document.getElementById('st-mode');
+                if (modeEl) modeEl.textContent = modeMap[data.mode] || data.mode;
+
+                const statusEl = document.getElementById('st-auto-status');
+                if (statusEl) {
+                    statusEl.textContent = data.auto_trading_enabled
+                        ? 'Авто-открытие в песочнице включено'
+                        : 'Авто-открытие отключено — сделки не отправляются';
+                    statusEl.style.color = data.auto_trading_enabled ? 'var(--up)' : 'var(--wait)';
+                }
+
+                // Auto-trade toggle (independent of auto-trading)
+                const atCb = document.getElementById('st-autotrade-toggle');
+                if (atCb) atCb.checked = !!data.auto_trade;
+                const atMin = document.getElementById('st-autotrade-min');
+                if (atMin) atMin.textContent = data.auto_trade_min_confidence ?? 70;
+                const atStatus = document.getElementById('st-autotrade-status');
+                if (atStatus) {
+                    atStatus.textContent = data.auto_trade
+                        ? 'Робот сам берёт уверенные сигналы и шлёт ордера в Tinkoff'
+                        : 'Предложения ждут ручного подтверждения';
+                    atStatus.style.color = data.auto_trade ? 'var(--up)' : 'var(--muted)';
+                }
+            } catch (e) {
+                console.error('loadAutoTrading error', e);
+                setStatus('Ошибка загрузки настроек автоторговли');
+            }
+        }
+
+        async function toggleAutoTrading(el) {
+            const enabled = el.checked;
+            try {
+                const res = await fetch(API + '/settings/auto_trading', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': '6901' },
+                    body: JSON.stringify({ auto_trading_enabled: enabled })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || res.statusText);
+                }
+                const data = await res.json();
+                el.checked = data.auto_trading_enabled;
+                setStatus(enabled ? 'Автоторговля в песочнице включена' : 'Автоторговля отключена — только бумажные предложения');
+                await loadAutoTrading();
+            } catch (e) {
+                console.error('toggleAutoTrading error', e);
+                el.checked = !enabled;
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        async function toggleAutoTrade(el) {
+            const enabled = el.checked;
+            try {
+                const res = await fetch(API + '/settings/auto_trading', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': '6901' },
+                    body: JSON.stringify({ auto_trade: enabled })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || res.statusText);
+                }
+                const data = await res.json();
+                el.checked = !!data.auto_trade;
+                setStatus(enabled
+                    ? 'Авто-исполнение включено — робот берёт сигналы с confidence ≥ ' + (data.auto_trade_min_confidence || 70)
+                    : 'Предложения снова ждут подтверждения');
+                await loadAutoTrading();
+            } catch (e) {
+                console.error('toggleAutoTrade error', e);
+                el.checked = !enabled;
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        async function refreshAll() {
+            setStatus('Загрузка...');
+            await Promise.all([
+                loadIndices().catch(() => {}),
+                loadWatchlist().catch(() => {}),
+                loadScreener().catch(() => {}),
+                loadDiary().catch(() => {}),
+                loadProposals().catch(() => {}),
+                loadSandboxPage().catch(() => {})
+            ]);
+            setStatus('Обновлено ' + new Date().toLocaleTimeString('ru-RU'));
+        }
+
+        async function closePaperPosition(id, ticker) {
+            if (!confirm(`Закрыть бумажную позицию ${ticker} по текущей рыночной цене?`)) return;
+            try {
+                const res = await fetch(API + `/paper/positions/${id}/close`, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Ошибка закрытия');
+                alert(`Позиция ${ticker} закрыта по ${data.exit_px?.toFixed(2) || '—'} (P&L ${(data.pnl_pct ?? 0).toFixed(2)}%)`);
+                await loadPaperStats();
+                await loadDiary();
+            } catch (e) {
+                alert('Не удалось закрыть позицию: ' + e.message);
+            }
+        }
+
+        async function loadPaperStats() {
+            try {
+                const stats = await (await fetch(API + '/paper/stats?days=30')).json();
+                const current = (stats.current_capital ?? 0).toLocaleString('ru-RU') + ' ₽';
+                const start = (stats.starting_capital ?? 0).toLocaleString('ru-RU') + ' ₽';
+                document.getElementById('pt-current').textContent = current + ' / ' + start;
+                const retEl = document.getElementById('pt-return');
+                const ret = stats.total_return_pct ?? 0;
+                retEl.textContent = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+                retEl.style.color = ret >= 0 ? 'var(--up)' : 'var(--down)';
+                document.getElementById('pt-winrate').textContent = (stats.win_rate ?? 0).toFixed(1) + '%';
+                document.getElementById('pt-trades').textContent = (stats.total_trades ?? 0) + ' / ' + (stats.open_positions ?? 0);
+
+                // Unified positions table: open first, then recently closed
+                const list = document.getElementById('paper-positions-list');
+                const res = await (await fetch(API + '/paper/positions?limit=30')).json();
+                if (!res.positions || res.positions.length === 0) {
+                    list.innerHTML = '<div style="color:var(--muted);padding:8px 0">Нет позиций.</div>';
+                    return;
+                }
+                const reasonLabels = {
+                    stop_loss: 'Стоп', take_profit: 'Тейк', timeout: 'Таймаут',
+                    agent_exit: 'Агент вышел', agent_reverse: 'Разворот', georisk: 'Геориск',
+                    signal_reverse: 'Сигнал разворот'
+                };
+                let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+                html += '<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">';
+                html += '<th>Тикер</th><th>Статус</th><th>Сторона</th><th>Вход</th><th>Выход</th><th>Стоп</th><th>Тейк</th><th>P&L</th><th>Причина</th><th>Действие</th></tr></thead><tbody>';
+                const sideNames = { long: 'ЛОНГ', short: 'ШОРТ' };
+                for (const p of res.positions) {
+                    const emoji = p.side === 'long' ? '🟢' : '🔴';
+                    const isOpen = p.status === 'open';
+                    const pnl = p.pnl_pct ?? 0;
+                    const pnlColor = pnl >= 0 ? 'var(--up)' : 'var(--down)';
+                    const pnlSign = pnl > 0 ? '+' : '';
+                    const pnlText = isOpen ? '—' : `<span style="color:${pnlColor}">${pnlSign}${pnl.toFixed(2)}%</span>`;
+                    const reason = isOpen ? 'Открыта' : (reasonLabels[p.close_reason] || p.close_reason || '—');
+                    const statusBadge = isOpen
+                        ? '<span class="badge-pending">Открыта</span>'
+                        : '<span class="badge-correct">Закрыта</span>';
+                    html += `<tr style="border-bottom:1px solid var(--border)">`;
+                    html += `<td>${p.ticker}</td>`;
+                    html += `<td>${statusBadge}</td>`;
+                    html += `<td>${emoji} ${sideNames[p.side] || p.side.toUpperCase()}</td>`;
+                    html += `<td>${p.entry_px?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td>${p.exit_px?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td>${p.stop_px?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td>${p.take_px?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td>${pnlText}</td>`;
+                    html += `<td>${reason}</td>`;
+                    html += `<td>${isOpen ? `<button class="btn" onclick="closePaperPosition(${p.id}, '${p.ticker}')">Закрыть</button>` : '—'}</td>`;
+                    html += `</tr>`;
+                }
+                html += '</tbody></table></div>';
+                list.innerHTML = html;
+            } catch (e) {
+                console.error('loadPaperStats error', e);
+            }
+        }
+
+        async function getTradingEnv() {
+            // Ask the server which mode is active and map it to the prediction environment.
+            // sandbox -> 'sandbox', paper trading -> 'paper', otherwise live/real account -> 'live'.
+            try {
+                const res = await fetch(API + '/settings/auto_trading');
+                if (!res.ok) throw new Error(res.statusText);
+                const data = await res.json();
+                if (data.sandbox) return 'sandbox';
+                if (data.paper_trading) return 'paper';
+                return 'live';
+            } catch (e) {
+                console.error('getTradingEnv error', e);
+                return 'paper';
+            }
+        }
+
+        async function loadDiary() {
+            try {
+                // Карточка «Точность прогнозов» из Песочницы удалена — если этих
+                // элементов нет в DOM, функция должна корректно завершиться.
+                const acc1d = document.getElementById('di-acc-1d');
+                if (!acc1d) return;
+                await Promise.all([loadPaperStats(), loadSourceStats()]);
+                const env = await getTradingEnv();
+                const sourceFilter = document.getElementById('diary-source-filter')?.value || '';
+                const sourceParam = sourceFilter ? '&source=' + encodeURIComponent(sourceFilter) : '';
+                const envParam = '&environment=' + encodeURIComponent(env);
+                const [preds, stats] = await Promise.all([
+                    (await fetch(API + '/predictions?days=30&limit=50' + sourceParam + envParam)).json(),
+                    (await fetch(API + '/predictions/stats?days=30' + envParam)).json()
+                ]);
+
+                // Metrics
+                document.getElementById('di-acc-1d').textContent = (stats.correct_1d_pct ?? 0).toFixed(1) + '%';
+                document.getElementById('di-acc-3d').textContent = (stats.correct_3d_pct ?? 0).toFixed(1) + '%';
+                document.getElementById('di-acc-7d').textContent = (stats.correct_7d_pct ?? 0).toFixed(1) + '%';
+                document.getElementById('di-total').textContent = stats.total ?? 0;
+
+                // Table
+                const list = document.getElementById('diary-list');
+                if (!preds.predictions || preds.predictions.length === 0) {
+                    list.innerHTML = '<div style="color:var(--muted);padding:12px 0">Нет данных за выбранный период.</div>';
+                    return;
+                }
+                let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+                html += '<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">';
+                html += '<th>Тикер</th><th>Дата</th><th>Источник</th><th>Напр.</th><th>Цена</th><th>1д</th><th>3д</th><th>7д</th><th></th></tr></thead><tbody>';
+                const dirNames = { long: 'ЛОНГ', short: 'ШОРТ', neutral: 'НЕЙТРАЛ', buy: 'ПОКУПКА', sell: 'ПРОДАЖА', hold: 'ДЕРЖАТЬ', wait: 'ЖДАТЬ' };
+                const dirEmoji = { long: '🟢', short: '🔴', neutral: '⚪', buy: '🟢', sell: '🔴', hold: '⚪', wait: '⚪' };
+                const srcName = { trading_agent: 'TradingAgent', analysis: 'Анализ', screener: 'Скринер' };
+                for (const p of preds.predictions) {
+                    const badge = (r) => {
+                        if (r === 'correct') return '<span class="badge-correct">Верно</span>';
+                        if (r === 'wrong') return '<span class="badge-wrong">Неверно</span>';
+                        return '<span class="badge-pending">Ждём</span>';
+                    };
+                    const src = p.source || 'analysis';
+                    const srcLabel = srcName[src] || src;
+                    const dateStr = new Date(p.ts).toLocaleDateString('ru-RU');
+                    const reasoning = (p.reasoning || '').trim();
+                    const hasReasoning = reasoning.length > 0;
+                    const reasonBtn = hasReasoning
+                        ? ` <button class="btn" style="padding:2px 8px;font-size:11px" onclick="toggleReason(${p.id})">Обоснование</button>`
+                        : '';
+                    const dirLabel = dirNames[p.predicted_direction] || p.predicted_direction.toUpperCase();
+                    html += `<tr style="border-bottom:1px solid var(--border)" id="pred-row-${p.id}">`;
+                    html += `<td>${p.ticker}</td>`;
+                    html += `<td>${dateStr}</td>`;
+                    html += `<td><span class="badge-source ${'badge-'+src}">${srcLabel}</span></td>`;
+                    html += `<td>${dirEmoji[p.predicted_direction] || '⚪'} ${dirLabel}</td>`;
+                    html += `<td>${p.predicted_price?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td>${badge(p.result_1d)}</td>`;
+                    html += `<td>${badge(p.result_3d)}</td>`;
+                    html += `<td>${badge(p.result_7d)}</td>`;
+                    html += `<td>${reasonBtn}</td>`;
+                    html += `</tr>`;
+                    if (hasReasoning) {
+                        html += `<tr id="pred-reason-${p.id}" style="display:none;background:var(--bg)">`;
+                        html += `<td colspan="9" style="padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">${reasoning}</td>`;
+                        html += `</tr>`;
+                    }
+                }
+                html += '</tbody></table></div>';
+                list.innerHTML = html;
+            } catch (e) {
+                console.error('loadDiary error', e);
+            }
+        }
+
+        async function loadSourceStats() {
+            try {
+                const data = await (await fetch(API + '/proposals/source_stats?since_days=30')).json();
+                const list = document.getElementById('source-stats-list');
+                if (!data.sources || data.sources.length === 0) {
+                    list.innerHTML = '<div style="color:var(--muted);padding:8px 0">Нет данных по предложениям робота.</div>';
+                    return;
+                }
+                const sourceNames = {
+                    prediction: 'Среднесрочный прогноз',
+                    evening: 'Вечерний TradingAgent',
+                    intraday: 'Интрадей',
+                    trading_agent: 'TradingAgent',
+                    georisk: 'GeoRisk',
+                    api_ticker: 'API Ticker',
+                };
+                let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+                html += '<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">';
+                html += '<th>Источник</th><th>Всего</th><th>Исполнено</th><th>Win rate</th><th>Сред. прибыль</th><th>Pending</th><th>Отклонено</th></tr></thead><tbody>';
+                for (const s of data.sources) {
+                    const winRate = s.win_rate_pct != null ? s.win_rate_pct.toFixed(1) + '%' : '—';
+                    const avgProfit = s.avg_profit_pct != null ? s.avg_profit_pct.toFixed(2) + '%' : '—';
+                    html += `<tr style="border-bottom:1px solid var(--border)">`;
+                    html += `<td>${sourceNames[s.source] || s.source}</td>`;
+                    html += `<td>${s.total}</td>`;
+                    html += `<td>${s.executed}</td>`;
+                    html += `<td>${winRate}</td>`;
+                    html += `<td>${avgProfit}</td>`;
+                    html += `<td>${s.pending}</td>`;
+                    html += `<td>${s.rejected}</td>`;
+                    html += `</tr>`;
+                }
+                html += '</tbody></table></div>';
+                list.innerHTML = html;
+            } catch (e) {
+                console.error('loadSourceStats error', e);
+            }
+        }
+
+        function toggleReason(id) {
+            const row = document.getElementById('pred-reason-' + id);
+            if (!row) return;
+            row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+        }
+
+        async function loadSandboxPage() {
+            await Promise.all([
+                loadSandboxPortfolio().catch(e => console.error('loadSandboxPortfolio error', e)),
+                loadSandboxOrders().catch(e => console.error('loadSandboxOrders error', e)),
+            ]);
+        }
+
+        async function loadSandboxPortfolio() {
+            try {
+                const res = await fetch(API + '/sandbox/portfolio');
+                const data = await res.json();
+                if (data.error) {
+                    document.getElementById('sandbox-positions-list').innerHTML = '<div style="color:var(--muted);padding:8px 0">Ошибка портфеля: ' + data.error + '</div>';
+                    document.getElementById('sb-total').textContent = '—';
+                    document.getElementById('sb-cash').textContent = '—';
+                    document.getElementById('sb-count').textContent = '—';
+                    document.getElementById('sb-account').textContent = '—';
+                    return;
+                }
+                document.getElementById('sb-total').textContent = (data.total_value_rub ?? 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+                document.getElementById('sb-cash').textContent = (data.cash_rub ?? 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+                const positions = data.positions || [];
+                document.getElementById('sb-count').textContent = positions.length;
+                document.getElementById('sb-account').textContent = (data.account_id || '').slice(0, 12) + '…';
+
+                // Surface phantom DB rows (open in broker_positions but missing
+                // at the broker) so the user can reconcile and avoid 30034 errors
+                // when those rows still try to close via the broker.
+                // db_legacy contains closed leftovers whose (ticker, side) does
+                // match a live broker position — historical noise, never trigger
+                // the "Очистить фиктивные" banner on its own.
+                const disc = data.db_discrepancy || [];
+                const legacy = data.db_legacy || [];
+                renderPhantomBanner(disc, legacy);
+
+                const list = document.getElementById('sandbox-positions-list');
+                if (positions.length === 0) {
+                    list.innerHTML = '<div style="color:var(--muted);padding:8px 0">Нет открытых позиций в песочнице.</div>';
+                    return;
+                }
+                const sideNames = { long: 'ЛОНГ', short: 'ШОРТ' };
+                let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+                html += '<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">';
+                html += '<th>Тикер</th><th>Сторона</th><th>Кол-во</th><th>Средняя цена</th><th>Текущая цена</th><th>Стоп</th><th>Тейк</th><th>P&L</th><th>Валюта</th><th>Действие</th></tr></thead><tbody>';
+                for (const p of positions) {
+                    const signedQty = parseInt(p.quantity) || 0;
+                    const absQty = Math.abs(signedQty);
+                    const isShort = p.side === 'short';
+                    const priceDiff = isShort ? (p.average_price - p.current_price) : (p.current_price - p.average_price);
+                    const pnl = p.current_price && p.average_price ? priceDiff * absQty : 0;
+                    const pnlPct = p.average_price ? (priceDiff / p.average_price * 100) : 0;
+                    const pnlColor = pnl >= 0 ? 'var(--up)' : 'var(--down)';
+                    const pnlSign = pnl > 0 ? '+' : '';
+                    const sideEmoji = isShort ? '🔴' : '🟢';
+                    html += `<tr style="border-bottom:1px solid var(--border)">`;
+                    html += `<td><strong>${p.ticker}</strong></td>`;
+                    html += `<td>${sideEmoji} ${sideNames[p.side] || p.side.toUpperCase()}</td>`;
+                    html += `<td>${absQty}</td>`;
+                    html += `<td>${p.average_price?.toFixed(2) ?? '—'} ₽</td>`;
+                    html += `<td>${p.current_price?.toFixed(2) ?? '—'} ₽</td>`;
+                    html += `<td style="color:var(--down)">${p.stop_px?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td style="color:var(--up)">${p.take_px?.toFixed(2) ?? '—'}</td>`;
+                    html += `<td style="color:${pnlColor}">${pnlSign}${pnl.toFixed(2)} ₽ (${pnlSign}${pnlPct.toFixed(2)}%)</td>`;
+                    html += `<td>${p.currency?.toUpperCase() || 'RUB'}</td>`;
+                    html += `<td><button class="btn" style="padding:2px 8px;font-size:11px;background:var(--down)" onclick="closeSandboxPosition('${p.ticker}', ${signedQty})">Закрыть</button></td>`;
+                    html += `</tr>`;
+                }
+                html += '</tbody></table></div>';
+                list.innerHTML = html;
+            } catch (e) {
+                console.error('loadSandboxPortfolio error', e);
+                document.getElementById('sandbox-positions-list').innerHTML = '<div style="color:var(--muted);padding:8px 0">Ошибка загрузки позиций.</div>';
+            }
+        }
+
+        function renderPhantomBanner(phantoms, legacy) {
+            const banner = document.getElementById('sandbox-phantom-banner');
+            if (!banner) return;
+            // Banner fires ONLY on open phantoms (status='open' rows that the
+            // broker has no position for) — these are the ones the executor
+            // would try to close via the broker and get 30034 errors on.
+            // Closed phantom leftovers are safe to ignore: the broker has
+            // already forgotten them, the journal has the P&L, and there is
+            // no action to take — showing them just nags on every refresh.
+            const openPhantoms = (phantoms || []).filter(p => (p.status || 'open') === 'open');
+            const closedPhantoms = (phantoms || []).filter(p => p.status === 'closed');
+
+            let html = '';
+            if (openPhantoms.length > 0) {
+                const items = openPhantoms.map(p => `${p.ticker} ${(p.side || '').toUpperCase()} qty=${p.qty}`).join(', ');
+                html += `
+                    <div style="background:rgba(255,193,7,0.15);border:1px solid rgba(255,193,7,0.4);border-radius:6px;padding:10px 14px;margin:10px 0;color:var(--warn);font-size:13px">
+                        <div><strong>⚠ ${openPhantoms.length} открыт${openPhantoms.length === 1 ? 'ая' : 'ых'} фиктивн${openPhantoms.length === 1 ? 'ая' : 'ых'} позиц${openPhantoms.length === 1 ? 'я' : 'ий'} в БД</strong> — нет в песочнице Tinkoff: ${items}.</div>
+                        <div style="color:var(--muted);font-size:12px;margin-top:4px">Брокер не примет закрытие — там нет такой позиции. Сверьте с реальным портфелем.</div>
+                        <button class="btn" style="padding:4px 10px;font-size:12px;margin-top:6px" onclick="reconcileSandbox()">🧹 Очистить фиктивные</button>
+                    </div>`;
+            }
+            const total = closedPhantoms.length + (legacy || []).length;
+            if (total > 0) {
+                const parts = [];
+                if (closedPhantoms.length > 0) {
+                    const items = closedPhantoms.map(p => `${p.ticker} ${(p.side || '').toUpperCase()}`).join(', ');
+                    parts.push(`закрытые phantom (${closedPhantoms.length}): ${items}`);
+                }
+                if (legacy && legacy.length > 0) {
+                    const items = legacy.map(p => `${p.ticker} ${(p.side || '').toUpperCase()}`).join(', ');
+                    parts.push(`отражения реальных (${legacy.length}): ${items}`);
+                }
+                html += `<div style="color:var(--muted);font-size:11px;padding:4px 0;margin-top:6px">История: ${parts.join('; ')}.</div>`;
+            }
+            banner.innerHTML = html;
+            banner.style.display = html ? '' : 'none';
+        }
+
+        async function reconcileSandbox() {
+            if (!confirm('Удалить из локальной БД все открытые позиции, которых нет в песочнице Tinkoff?')) return;
+            try {
+                const res = await fetch(API + '/sandbox/reconcile', {
+                    method: 'POST',
+                    headers: { 'x-api-key': '6901' }
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'reconcile failed');
+                alert(`Сверили: удалено ${data.closed_phantoms ?? 0} фиктивных записей; реальных позиций у брокера: ${data.broker_positions ?? 0}`);
+                loadSandboxPage();
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        async function closeSandboxPosition(ticker, signedQty) {
+            const side = signedQty < 0 ? 'short' : 'long';
+            const absQty = Math.abs(signedQty);
+            if (!confirm(`Закрыть позицию ${ticker} (${absQty} шт., ${side === 'short' ? 'ШОРТ' : 'ЛОНГ'}) в песочнице?`)) return;
+            try {
+                const res = await fetch(API + '/sandbox/close_position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': '6901' },
+                    body: JSON.stringify({ ticker, qty: signedQty })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Ошибка закрытия позиции');
+                const remaining = data.remaining_qty ? Math.abs(data.remaining_qty) : 0;
+                const lot = data.lot || 1;
+                const closed = data.qty || 0;
+                let msg = `Позиция ${ticker}: закрыто ${closed} шт. (лот=${lot}).`;
+                if (remaining > 0) {
+                    msg += ` Остаток ${remaining} шт. не закрыт — меньше одного лота. Закройте его отдельно.`;
+                }
+                msg += ` Заявка ${data.order_id || '—'}.`;
+                alert(msg);
+                loadSandboxPage();
+            } catch (e) {
+                console.error('closeSandboxPosition error', e);
+                let msg = e.message || 'Неизвестная ошибка';
+                // Sandbox 30034 — позиция у брокера ещё «не осела» после сделки.
+                // Это не настоящий дисбаланс, брокер отдаёт отказ на короткое
+                // окно settlement. retry-with-backoff уже обработал несколько
+                // попыток внутри; UI подсказывает, что делать.
+                if (msg.includes('30034') || msg.includes('Not enough balance')) {
+                    msg = 'Песочница Tinkoff ещё не рассчитала позицию (30034). Подождите 10–30 секунд и закройте снова.';
+                }
+                alert('Ошибка: ' + msg);
+            }
+        }
+
+        async function loadSandboxOrders() {
+            try {
+                const [tradesRes, summaryRes] = await Promise.all([
+                    fetch(API + '/sandbox/trades?limit=200'),
+                    fetch(API + '/sandbox/summary?limit=500'),
+                ]);
+                const data = await tradesRes.json();
+                const summary = await summaryRes.json();
+                const list = document.getElementById('sandbox-orders-list');
+                const stats = document.getElementById('sandbox-orders-stats');
+                if (stats) {
+                    const trades = data.trades || [];
+                    const closed = trades.filter(t => t.kind === 'closed').length;
+                    const open = trades.filter(t => t.kind === 'open').length;
+                    const wins = trades.filter(t => t.kind === 'closed' && (t.pnl_rub || 0) > 0).length;
+                    stats.innerHTML =
+                        `<span style="color:var(--muted)">Сделок</span> <strong>${closed}</strong> ` +
+                        `<span style="color:var(--muted);margin-left:8px">Открыто</span> <strong>${open}</strong> ` +
+                        `<span style="color:var(--muted);margin-left:8px">Прибыльных</span> <strong style="color:var(--good)">${wins}</strong> ` +
+                        `<span style="color:var(--muted)"> / ${closed} (${closed ? Math.round(wins/closed*100) : 0}%)</span>`;
+                }
+                if (!data.trades || data.trades.length === 0) {
+                    list.innerHTML = '<div style="color:var(--muted);padding:12px 0">Нет сделок в песочнице.</div>';
+                    renderSandboxSummary(summary);
+                    return;
+                }
+                let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+                html += '<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">';
+                html += '<th>Тикер</th><th>Статус</th><th>Сторона</th><th>Вход</th><th>Выход</th>';
+                html += '<th>Стоп</th><th>Тейк</th><th>P&amp;L</th><th>Причина</th>';
+                html += '</tr></thead><tbody>';
+                for (const o of data.trades) {
+                    const isOpen = o.kind === 'open';
+                    const statusClass = isOpen ? 'badge-pending' : 'badge-correct';
+                    const statusLabel = isOpen ? 'Открыта' : 'Закрыта';
+                    const normSide = (o.side === 'short' || o.side === 'sell') ? 'short' : 'long';
+                    const sideColor = normSide === 'short' ? 'var(--wrong)' : 'var(--good)';
+                    const sideLabel = normSide === 'short' ? 'ШОРТ' : 'ЛОНГ';
+                    const entryCell = o.entry_px != null ? o.entry_px.toFixed(2) + ' ₽' : '—';
+                    const exitCell = o.exit_px != null ? o.exit_px.toFixed(2) + ' ₽' : '—';
+                    const stopCell = o.stop_px != null ? o.stop_px.toFixed(2) + ' ₽' : '—';
+                    const takeCell = o.take_px != null ? o.take_px.toFixed(2) + ' ₽' : '—';
+                    let pnlCell = '—';
+                    if (o.pnl_rub != null) {
+                        const sign = o.pnl_rub >= 0 ? '+' : '';
+                        const color = o.pnl_rub >= 0 ? 'var(--good)' : 'var(--wrong)';
+                        const pct = o.pnl_pct != null ? ` (${sign}${o.pnl_pct.toFixed(2)}%)` : '';
+                        pnlCell = `<span style="color:${color}">${sign}${o.pnl_rub.toFixed(2)} ₽${pct}</span>`;
+                    }
+                    const reason = o.reason || (isOpen ? 'Открыта' : '');
+                    const reasonLabel = ({
+                        stop_loss: 'Стоп-лосс', take_profit: 'Тейк',
+                        manual_close: 'Ручное закрытие', georisk_intraday: 'Geo-risk',
+                        reverse_to_long: 'Разворот в лонг',
+                    }[reason] || reason);
+                    const timeOnly = (o.ts || '').slice(11, 16);
+                    html += `<tr style="border-bottom:1px solid var(--border)">`;
+                    html += `<td><div><strong>${o.ticker}</strong></div><div style="font-size:10px;color:var(--muted)">${timeOnly} · ${(o.ts || '').slice(0, 10)}</div></td>`;
+                    html += `<td><span class="${statusClass}">${statusLabel}</span></td>`;
+                    html += `<td><span style="color:${sideColor};font-weight:600">${sideLabel}</span></td>`;
+                    html += `<td>${entryCell}</td>`;
+                    html += `<td>${exitCell}</td>`;
+                    html += `<td>${stopCell}</td>`;
+                    html += `<td>${takeCell}</td>`;
+                    html += `<td>${pnlCell}</td>`;
+                    html += `<td style="font-size:12px">${reasonLabel}</td>`;
+                    html += `</tr>`;
+                }
+                html += '</tbody></table></div>';
+                html += renderSandboxSummary(summary, /*as_html=*/true);
+                list.innerHTML = html;
+            } catch (e) {
+                console.error('loadSandboxOrders error', e);
+                document.getElementById('sandbox-orders-list').innerHTML = '<div style="color:var(--muted);padding:12px 0">Ошибка загрузки сделок.</div>';
+            }
+        }
+
+        function orderStatus(o) {
+            const status = o.status;
+            if (status === 'pending') return { statusLabel: 'Активна', statusClass: 'badge-pending' };
+            if (status === 'rejected') return { statusLabel: 'Отклонена', statusClass: 'badge-wrong' };
+            if (status === 'cancelled') return { statusLabel: 'Отменена', statusClass: 'badge-pending' };
+            if (status === 'partial') return { statusLabel: 'Открыта', statusClass: 'badge-pending' };
+            // status === 'filled'
+            if (o.proposal_id == null) return { statusLabel: 'Закрыта', statusClass: 'badge-correct' };
+            if (o.close_reason) return { statusLabel: 'Закрыта', statusClass: 'badge-correct' };
+            if (o.exit_px != null) return { statusLabel: 'Закрыта', statusClass: 'badge-correct' };
+            return { statusLabel: 'Открыта', statusClass: 'badge-pending' };
+        }
+
+        function renderSandboxOrdersMetrics(summary, container) {
+            const closed = (summary && summary.closed_count) || 0;
+            const open = (summary && summary.open_count) || 0;
+            const winning = (summary && summary.winning_trades) || 0;
+            const losing = (summary && summary.losing_trades) || 0;
+            const denom = winning + losing;
+            const winPct = denom > 0 ? Math.round(100 * winning / denom) : 0;
+            const winColor = denom === 0
+                ? 'var(--muted)'
+                : winPct >= 60 ? 'var(--good)' : winPct >= 40 ? 'var(--warn)' : 'var(--wrong)';
+            const cell = (label, value, sub, accent) => `
+                <div class="metric" style="flex:1">
+                    <div class="metric-label">${label}</div>
+                    <div class="metric-value" style="${accent ? 'color:' + accent : ''}">${value}</div>
+                    ${sub ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${sub}</div>` : ''}
+                </div>`;
+            container.className = 'metric-row';
+            container.innerHTML =
+                cell('Сделок', closed, closed > 0 ? 'закрытых пар' : 'пока нет', 'var(--good)') +
+                cell('Открыто', open, open > 0 ? 'позиций в рынке' : 'свободный счёт', open > 0 ? 'var(--warn)' : 'var(--muted)') +
+                cell('Прибыльных', winning, denom > 0 ? `из ${denom} (${winPct}%)` : 'нет закрытых', winColor);
+        }
+
+        function formatPx(px) {
+            if (px == null || isNaN(Number(px))) return '<span style="color:var(--muted)">—</span>';
+            return Number(px).toFixed(2) + ' ₽';
+        }
+
+        function formatPnl(rub, pct) {
+            if (rub == null) return '<span style="color:var(--muted)">—</span>';
+            const color = rub > 0 ? 'var(--good)' : rub < 0 ? 'var(--wrong)' : 'var(--muted)';
+            const sign = rub > 0 ? '+' : '';
+            const pctStr = (pct != null && !isNaN(Number(pct))) ? ` <span style="color:${color};font-size:10px">(${sign}${Number(pct).toFixed(2)}%)</span>` : '';
+            return `<span style="color:${color};font-weight:600">${sign}${Number(rub).toFixed(2)} ₽</span>${pctStr}`;
+        }
+
+        function formatReason(reason, isCloseRow, mode) {
+            if (reason) {
+                const labels = {
+                    manual_close: 'Ручное закрытие',
+                    stop_loss: 'Стоп-лосс',
+                    take_profit: 'Тейк-профит',
+                    stop_close: 'Стоп-лосс',
+                    take_close: 'Тейк-профит',
+                    georisk_intraday: 'Геориск (интрадей)',
+                    dividend_cutoff: 'Закрытие перед дивидендами',
+                    stale_cleanup: 'Устаревшая позиция',
+                    phantom_reconcile: 'Фиктивная позиция',
+                };
+                return labels[reason] || reason;
+            }
+            if (isCloseRow) return '<span style="color:var(--muted)">закрытие</span>';
+            const modeLabels = {
+                auto_trade: 'авто',
+                semi_auto: 'полуавто',
+                paper: 'бумажная',
+                live: 'live',
+            };
+            return modeLabels[mode] || '<span style="color:var(--muted)">открытие</span>';
+        }
+
+        function buildOrderDetails(o) {
+            const rows = [];
+            rows.push(['Тикер', o.ticker]);
+            rows.push(['Сторона', o.side]);
+            rows.push(['Время', o.ts || '—']);
+            rows.push(['Order ID (UUID)', `<span style="font-family:monospace;font-size:11px" title="${o.order_id || ''}">${o.order_id ? o.order_id.slice(0, 8) + '…' : '—'}</span>`]);
+            if (o.proposal_id != null) rows.push(['Proposal ID', '#' + o.proposal_id]);
+            if (o.account_id) rows.push(['Account ID', o.account_id.slice(0, 8) + '…']);
+            rows.push(['Лотов / шт.', `${o.lots ?? 0} / ${o.qty ?? 0}`]);
+            if (o.entry_px != null) rows.push(['Цена исполнения', Number(o.entry_px).toFixed(2) + ' ₽']);
+            if (o.open_px != null && o.open_px !== o.entry_px) rows.push(['Цена открытия', Number(o.open_px).toFixed(2) + ' ₽']);
+            if (o.exit_px != null) rows.push(['Цена закрытия', Number(o.exit_px).toFixed(2) + ' ₽']);
+            if (o.stop_px != null) rows.push(['Стоп', Number(o.stop_px).toFixed(2) + ' ₽']);
+            if (o.take_px != null) rows.push(['Тейк', Number(o.take_px).toFixed(2) + ' ₽']);
+            if (o.pnl_rub != null) rows.push(['P&L', `${o.pnl_rub >= 0 ? '+' : ''}${Number(o.pnl_rub).toFixed(2)} ₽${o.pnl_pct != null ? ` (${Number(o.pnl_pct).toFixed(2)}%)` : ''}`]);
+            if (o.proposal_source) {
+                const sourceLabels = { intraday: 'Интрадей', prediction: 'Среднесрок', evening: 'Вечерний', trading_agent: 'TradingAgent', api_ticker: 'Анализ', smoke_test: 'Тест' };
+                rows.push(['Источник', sourceLabels[o.proposal_source] || o.proposal_source]);
+            }
+            if (o.proposal_confidence != null) rows.push(['Уверенность', o.proposal_confidence + '%']);
+            if (o.proposal_proposal_mode) {
+                const modeLabels = { auto_trade: 'авто', semi_auto: 'полуавто', paper: 'бумажная', live: 'live' };
+                rows.push(['Режим', modeLabels[o.proposal_proposal_mode] || o.proposal_proposal_mode]);
+            }
+            if (o.proposal_signal) rows.push(['Сигнал', o.proposal_signal]);
+            if (o.proposal_horizon) rows.push(['Горизонт', o.proposal_horizon]);
+            if (o.broker_message) rows.push(['Брокер', `<span style="color:var(--muted)">${o.broker_message}</span>`]);
+            if (o.stop_order_ids) {
+                try {
+                    const arr = JSON.parse(o.stop_order_ids);
+                    if (Array.isArray(arr) && arr.length) rows.push(['Стоп-ордера', `${arr.length} шт.`]);
+                } catch (_) { /* не JSON — пропускаем */ }
+            }
+            return '<div style="display:grid;grid-template-columns:max-content 1fr;gap:4px 16px">' +
+                rows.map(([k, v]) => `<div style="color:var(--muted)">${k}</div><div>${v}</div>`).join('') +
+                '</div>';
+        }
+
+        function toggleOrderRow(id) {
+            const tr = document.getElementById('order-detail-' + id);
+            if (!tr) return;
+            tr.style.display = (tr.style.display === 'none' || !tr.style.display) ? '' : 'none';
+        }
+
+        function renderSandboxSummary(summary, as_html) {
+            if (!summary) return as_html ? '' : null;
+            const pnl = summary.total_pnl_rub || 0;
+            const pnlColor = pnl > 0 ? 'var(--good)' : pnl < 0 ? 'var(--wrong)' : 'var(--muted)';
+            const winRate = summary.win_rate_pct || 0;
+            const winColor = winRate >= 60 ? 'var(--good)' : winRate >= 40 ? 'var(--warn)' : 'var(--muted)';
+            const byTicker = (summary.by_ticker || []).slice(0, 5);
+            const tickerRows = byTicker.map(b => {
+                const c = b.pnl_rub > 0 ? 'var(--good)' : b.pnl_rub < 0 ? 'var(--wrong)' : 'var(--muted)';
+                const best = b.best_rub != null ? Number(b.best_rub).toFixed(0) : '—';
+                const worst = b.worst_rub != null ? Number(b.worst_rub).toFixed(0) : '—';
+                return `<tr><td><strong>${b.ticker}</strong></td><td style="text-align:right">${b.trades}</td><td style="text-align:right;color:${c}">${Number(b.pnl_rub).toFixed(0)} ₽</td><td style="text-align:right;color:var(--muted);font-size:11px">лучшая ${best} / худшая ${worst}</td></tr>`;
+            }).join('') || '<tr><td colspan="4" style="color:var(--muted);padding:6px 0">Нет закрытых пар с известной ценой.</td></tr>';
+            const block = `
+                <div class="card" style="margin-top:16px">
+                    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                        <span>Сводка по сделкам</span>
+                        <a href="${API}/sandbox/orders.csv?limit=500" download="sandbox_orders.csv" style="font-size:12px;color:var(--accent);text-decoration:none">⬇ Скачать CSV</a>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px">
+                        <div><div style="color:var(--muted);font-size:11px">Закрыто пар</div><div style="font-size:18px;font-weight:600">${summary.closed_count || 0}</div></div>
+                        <div><div style="color:var(--muted);font-size:11px">Открыто позиций</div><div style="font-size:18px;font-weight:600">${summary.open_count || 0}</div></div>
+                        <div><div style="color:var(--muted);font-size:11px">Win-rate</div><div style="font-size:18px;font-weight:600;color:${winColor}">${winRate}%</div></div>
+                        <div><div style="color:var(--muted);font-size:11px">Σ P&L</div><div style="font-size:18px;font-weight:600;color:${pnlColor}">${pnl >= 0 ? '+' : ''}${Number(pnl).toFixed(2)} ₽</div></div>
+                    </div>
+                    <div style="color:var(--muted);font-size:11px;margin-bottom:4px">Топ по тикерам</div>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px">${tickerRows}</table>
+                    <div style="color:var(--muted);font-size:11px;margin-top:8px">P&L считается по FIFO-матчингу открытий и закрытий в broker_orders; старые закрытия без сохранённой цены в сводку не попадают.</div>
+                </div>`;
+            if (as_html) return block;
+            // Standalone mode — replace list contents.
+            const list = document.getElementById('sandbox-orders-list');
+            if (list) list.insertAdjacentHTML('beforeend', block);
+        }
+
+
+        async function resetPredictions() {
+            const code = prompt('Введите код 6901 для обнуления статистики прогнозов (бумажная торговля):');
+            if (code !== '6901') {
+                if (code != null) alert('Неверный код');
+                return;
+            }
+            try {
+                const res = await fetch(API + '/predictions?environment=paper', {
+                    method: 'DELETE',
+                    headers: { 'x-api-key': '6901' }
+                });
+                if (res.ok) {
+                    alert('Статистика прогнозов обнулена.');
+                    loadDiary();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    alert('Ошибка: ' + (data.detail || res.statusText));
+                }
+            } catch (e) {
+                alert('Ошибка сети: ' + e.message);
+            }
+        }
+
+
+        async function loadProposals() {
+            try {
+                const filter = document.getElementById('proposal-filter')?.value || 'pending';
+                // Use /proposals/pending (with server-side dedup) so we don't see
+                // multiple pending rows for the same ticker waiting on the user.
+                const statusParam = filter && filter !== 'pending' ? '&status=' + encodeURIComponent(filter) : '';
+                const url = (filter === 'pending' || !filter)
+                    ? API + '/proposals/pending?limit=50'
+                    : API + '/proposals?limit=50&since_days=7' + statusParam;
+                const res = await fetch(url);
+                const data = await res.json();
+                const list = document.getElementById('proposals-list');
+                if (!data.proposals || data.proposals.length === 0) {
+                    list.innerHTML = '<div style="color:var(--muted);padding:12px 0">Нет предложений для выбранного фильтра.</div>';
+                    return;
+                }
+                const statusLabels = {
+                    pending: 'Ожидает решения',
+                    confirmed: 'Подтверждена',
+                    rejected: 'Отклонена',
+                    executed: 'Исполнена'
+                };
+                const statusBadges = {
+                    pending: 'badge-pending',
+                    confirmed: 'badge-correct',
+                    rejected: 'badge-wrong',
+                    executed: 'badge-correct'
+                };
+                const sideNames = { long: 'ЛОНГ', short: 'ШОРТ' };
+                const sideEmoji = { long: '🟢', short: '🔴' };
+                let html = '';
+                for (const p of data.proposals) {
+                    const dateStr = formatMskDateTime(p.ts);
+                    const side = (p.side || 'long').toLowerCase();
+                    const sourceLabel = p.source === 'prediction' ? 'Среднесрочный прогноз' : (p.source === 'intraday' ? 'Интрадей' : 'Вечерний TradingAgent');
+                    const horizonLabel = p.horizon ? { '1d': '1 день', '3d': '3 дня', '7d': '7 дней', 'intraday': 'внутри дня' }[p.horizon] || p.horizon : '';
+                    const modeLabel = p.proposal_mode === 'paper' ? 'бумажная' : (p.proposal_mode === 'semi_auto' ? 'полуавто' : (p.proposal_mode === 'auto_trade' ? 'авто' : (p.proposal_mode === 'live' ? 'live' : '')));
+                    const isPending = p.status === 'pending';
+                    const entryText = p.entry_px != null ? p.entry_px.toFixed(2) + ' ₽' : '—';
+                    const stopText = p.stop_px != null ? p.stop_px.toFixed(2) + ' ₽' : '—';
+                    const takeText = p.take_px != null ? p.take_px.toFixed(2) + ' ₽' : '—';
+                    const feeText = p.fee_rub != null ? p.fee_rub.toFixed(2) + ' ₽' : '—';
+                    const netText = p.net_profit_pct != null ? p.net_profit_pct.toFixed(2) + '%' : '—';
+                    let actions = '';
+                    if (isPending) {
+                        const defaultMode = p.proposal_mode || 'semi_auto';
+                        actions = `
+                            <div class="proposal-actions" style="align-items:center;gap:8px;flex-wrap:wrap">
+                                <select id="confirm-mode-${p.id}" style="width:auto;padding:4px 8px;font-size:12px">
+                                    <option value="paper" ${defaultMode === 'paper' ? 'selected' : ''}>Бумажная</option>
+                                    <option value="semi_auto" ${defaultMode === 'semi_auto' ? 'selected' : ''}>Полуавто</option>
+                                    <option value="live" ${defaultMode === 'live' ? 'selected' : ''}>Live</option>
+                                </select>
+                                <button class="btn btn-confirm" onclick="confirmProposal(${p.id})">Подтвердить</button>
+                                <button class="btn btn-reject" onclick="rejectProposal(${p.id})">Отклонить</button>
+                            </div>`;
+                    }
+                    html += `<div class="proposal-card ${p.status}">
+                        <div class="proposal-header">
+                            <div class="proposal-title">${sideEmoji[side] || '⚪'} ${sideNames[side] || side.toUpperCase()} ${p.ticker}</div>
+                            <span class="${statusBadges[p.status] || 'badge-pending'}">${statusLabels[p.status] || p.status}</span>
+                        </div>
+                        <div class="proposal-meta">
+                            <strong>Источник:</strong> ${sourceLabel}${horizonLabel ? ' | <strong>Горизонт:</strong> ' + horizonLabel : ''}${modeLabel ? ' | <strong>Режим:</strong> ' + modeLabel : ''}<br>
+                            <strong>Сигнал:</strong> ${p.signal || '—'} | <strong>Уверенность:</strong> ${p.confidence != null ? p.confidence + '%' : '—'}<br>
+                            <strong>Вход:</strong> ${entryText} | <strong>Кол-во:</strong> ${p.qty != null ? p.qty : '—'}<br>
+                            <strong>Стоп:</strong> ${stopText} | <strong>Цель:</strong> ${takeText}<br>
+                            <strong>Комиссия (~):</strong> ${feeText} | <strong>Чистая прибыль:</strong> ${netText}<br>
+                            <strong>Время:</strong> ${dateStr}
+                        </div>
+                        <div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5">${p.reason || '—'}</div>
+                        ${p.reject_reason ? `<div style="font-size:12px;color:var(--down);margin-top:6px">Причина отклонения: ${p.reject_reason}</div>` : ''}
+                        ${actions}
+                    </div>`;
+                }
+                list.innerHTML = html;
+            } catch (e) {
+                console.error('loadProposals error', e);
+                document.getElementById('proposals-list').innerHTML = '<div style="color:var(--muted);padding:12px 0">Ошибка загрузки предложений.</div>';
+            }
+        }
+
+        async function confirmProposal(id) {
+            const modeSelect = document.getElementById('confirm-mode-' + id);
+            const mode = modeSelect ? modeSelect.value : 'semi_auto';
+            let message = 'Подтвердить предложение робота?';
+            if (mode === 'paper') {
+                message = 'Подтвердить в режиме БУМАЖНОЙ торговли? Позиция откроется на виртуальном счёте.';
+            } else if (mode === 'semi_auto') {
+                message = 'Подтвердить в режиме ПОЛУАВТО? Заявка уйдёт в брокер при следующем запуске исполнителя.';
+            } else if (mode === 'live') {
+                message = 'Подтвердить в режиме LIVE? Заявка уйдёт в брокер немедленно (только для реального счёта).';
+            }
+            if (!confirm(message)) return;
+            try {
+                const res = await fetch(API + '/proposals/' + id + '/confirm', {
+                    method: 'POST',
+                    headers: { 'x-api-key': '6901', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decided_by: 'user', proposal_mode: mode })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const actualMode = data.proposal_mode || mode;
+                    if (actualMode !== mode) {
+                        alert('Режим изменён на ' + actualMode + ' (sandbox не разрешает live).');
+                    }
+                    loadProposals();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    alert('Ошибка: ' + (data.detail || res.statusText));
+                }
+            } catch (e) {
+                alert('Ошибка сети: ' + e.message);
+            }
+        }
+
+        async function rejectProposal(id) {
+            const reasons = {
+                'too_risky': 'Слишком рискованно',
+                'no_money': 'Нет свободных денег',
+                'dont_believe': 'Не верю сигналу',
+                'have_position': 'Уже есть позиция',
+                'market_closed': 'Рынок закрыт/аукцион',
+                'other': 'Другое'
+            };
+            let options = Object.entries(reasons).map(([k,v]) => `${k}: ${v}`).join('\n');
+            const key = prompt('Причина отклонения (введите ключ):\n' + options);
+            if (!key) return;
+            if (!confirm('Отклонить предложение робота?')) return;
+            try {
+                const res = await fetch(API + '/proposals/' + id + '/reject', {
+                    method: 'POST',
+                    headers: { 'x-api-key': '6901', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decided_by: 'user', reject_reason: reasons[key] || key })
+                });
+                if (res.ok) {
+                    loadProposals();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    alert('Ошибка: ' + (data.detail || res.statusText));
+                }
+            } catch (e) {
+                alert('Ошибка сети: ' + e.message);
+            }
+        }
+
+        async function cleanupProposals() {
+            if (!confirm('Удалить все ожидающие решения предложения и записи api_ticker?')) return;
+            try {
+                const res = await fetch(API + '/proposals/cleanup?clear_all_pending=true', {
+                    method: 'POST',
+                    headers: { 'x-api-key': '6901', 'Content-Type': 'application/json' }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    alert('Очищено: api_ticker = ' + (data.deleted?.api_ticker ?? 0) + ', pending = ' + (data.deleted?.stale_pending ?? 0));
+                    loadProposals();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    alert('Ошибка: ' + (data.detail || res.statusText));
+                }
+            } catch (e) {
+                alert('Ошибка сети: ' + e.message);
+            }
+        }
+
+        async function loadIndices() {
+            try {
+                const d = await (await fetch(API + '/indices')).json();
+                document.getElementById('idx-imoex').textContent = d.IMOEX ?? '—';
+                document.getElementById('idx-rtsi').textContent = d.RTSI ?? '—';
+            }catch(e){}
+        }
+
+        function sentimentEmoji(s) {
+            if(!s) return '';
+            if(s.sentiment === 'bullish') return '🟢';
+            if(s.sentiment === 'bearish') return '🔴';
+            if(s.sentiment === 'neutral') return '⚪';
+            return '';
+        }
+
+        async function loadWatchlist() {
+            const c = document.getElementById('watchlist');
+            try {
+                const [d, sent] = await Promise.all([
+                    (await fetch(API + '/watchlist')).json(),
+                    (await fetch(API + '/watchlist/sentiment')).json().catch(() => ({items:{}}))
+                ]);
+                _sentimentCache = sent.items || {};
+                c.innerHTML = '';
+                d.items.forEach(i => {
+                    const p = i.price ? i.price.toFixed(2) + ' ₽' : '—';
+                    const s = _sentimentCache[i.ticker];
+                    const emoji = sentimentEmoji(s);
+                    const div = document.createElement('div');
+                    div.className = 'ticker-item';
+                    div.innerHTML = `<div class="ticker-left"><div class="ticker-name">${i.ticker} ${emoji}</div><div class="ticker-meta">${NAMES[i.ticker] || ''}</div></div><div class="ticker-right"><div class="ticker-price">${p}</div></div>`;
+                    div.onclick = () => { showPage('analysis'); loadAnalysis(i.ticker); };
+                    c.appendChild(div);
+                });
+                document.getElementById('watch-count').textContent = d.items.length;
+            }catch(e){ c.innerHTML = '<div class="empty">Ошибка загрузки</div>'; }
+        }
+
+        let _screenerResults = [];
+        let _screenerFilter = 'all';
+
+        function renderScreenerItems() {
+            const c = document.getElementById('screener-list');
+            c.innerHTML = '';
+            if (!_screenerResults.length) {
+                c.innerHTML = '<div class="empty">Нет данных. Нажмите «Обновить» для запуска скрининга.</div>';
+                return;
+            }
+            const filtered = _screenerResults.filter(r => {
+                const cls = classifyScreenerItem(r);
+                if (_screenerFilter === 'all') return true;
+                if (_screenerFilter === 'bull') return cls === 'bull';
+                if (_screenerFilter === 'bear') return cls === 'bear';
+                if (_screenerFilter === 'neutral') return cls === 'neutral';
+                return true;
+            });
+            if (!filtered.length) {
+                c.innerHTML = '<div class="empty">Нет тикеров для выбранного фильтра.</div>';
+                return;
+            }
+            filtered.forEach(r => {
+                const s = (r.signals || []).slice(0,2).map(ts).join(', ') || 'нет';
+                const p = r.details?.close ? r.details.close.toFixed(2)+' ₽' : '';
+                const sc = typeof r.score === 'number' ? r.score.toFixed(1) : r.score;
+                const bounce = r.details?.bounce;
+                let bounceHtml = '';
+                if(bounce && bounce.probability >= 30) {
+                    const bColor = bounce.direction === 'up' ? 'var(--up)' : (bounce.direction === 'down' ? 'var(--down)' : 'var(--wait)');
+                    const bArrow = bounce.direction === 'up' ? '↑' : (bounce.direction === 'down' ? '↓' : '→');
+                    const bLabel = bounce.confidence_label === 'high' ? 'высокая' : (bounce.confidence_label === 'moderate' ? 'средня' : 'низкая');
+                    bounceHtml = `<div style="font-size:12px;color:${bColor};margin-top:2px">${bArrow} Отскок ${bounce.probability}% (${bLabel})</div>`;
+                }
+                const div = document.createElement('div');
+                div.className = 'ticker-item';
+                div.innerHTML = `<div class="ticker-left"><div class="ticker-name">${r.ticker}</div><div class="ticker-meta">${s}</div>${bounceHtml}</div><div class="ticker-right"><div class="ticker-score">${sc}</div><div class="ticker-price">${p}</div></div>`;
+                div.onclick = () => { showPage('analysis'); loadAnalysis(r.ticker); };
+                c.appendChild(div);
+            });
+        }
+
+        function setScreenerFilter(filter) {
+            _screenerFilter = filter;
+            ['all','bull','bear','neutral'].forEach(f => {
+                const btn = document.getElementById('filter-' + f);
+                if (btn) btn.style.background = f === filter ? 'var(--accent)' : 'var(--card)';
+            });
+            renderScreenerItems();
+        }
+
+        function classifyScreenerItem(r) {
+            const direction = r.direction || 'neutral';
+            const strength = r.strength || 'weak';
+            const bull = r.bull_score ?? 0;
+            const bear = r.bear_score ?? 0;
+            if (direction === 'long') return 'bull';
+            if (direction === 'short') return 'bear';
+            if (bull > bear + 15) return 'bull';
+            if (bear > bull + 15) return 'bear';
+            return 'neutral';
+        }
+
+        function updateSummaryPills() {
+            const container = document.getElementById('market-summary-tickers');
+            if (!container) return;
+            container.innerHTML = '';
+            let bull=0, bear=0, neutral=0;
+            const pills = [];
+            _screenerResults.forEach(r => {
+                const cls = classifyScreenerItem(r);
+                if (cls === 'bull') bull++;
+                else if (cls === 'bear') bear++;
+                else neutral++;
+                const direction = r.direction || 'neutral';
+                const strength = r.strength || 'weak';
+                const bullScore = r.bull_score ?? 0;
+                const bearScore = r.bear_score ?? 0;
+                const label = (cls === 'bull' ? 'Бычий' : (cls === 'bear' ? 'Медвежий' : 'Нейтральный'))
+                    + (cls !== 'neutral' ? ' (' + strength + ')' : '');
+                pills.push({ticker: r.ticker, cls: cls, label: label, bull: bullScore, bear: bearScore});
+            });
+            pills.forEach(pill => {
+                const span = document.createElement('span');
+                span.className = 'summary-pill ' + pill.cls;
+                span.textContent = pill.ticker;
+                span.title = pill.label + ' | bull: ' + pill.bull + ' / bear: ' + pill.bear;
+                span.onclick = () => { showPage('analysis'); loadAnalysis(pill.ticker); };
+                container.appendChild(span);
+            });
+            document.getElementById('bull-count').textContent = bull;
+            document.getElementById('bear-count').textContent = bear;
+        }
+
+        async function loadScreener() {
+            try {
+                const d = await (await fetch(API + '/screener?limit=33')).json();
+                _screenerResults = d.results || [];
+                if (!_screenerResults.length) {
+                    document.getElementById('bull-count').textContent = '0';
+                    document.getElementById('bear-count').textContent = '0';
+                    document.getElementById('market-summary-tickers').innerHTML = '';
+                    renderScreenerItems();
+                    return;
+                }
+                updateSummaryPills();
+                renderScreenerItems();
+                setScreenerFilter(_screenerFilter);
+                const tsText = d.run_ts ? 'Обновлено: ' + new Date(d.run_ts).toLocaleString('ru-RU') : '';
+                setStatus(tsText);
+            }catch(e){
+                document.getElementById('screener-list').innerHTML = '<div class="empty">Ошибка</div>';
+            }
+        }
+        async function runScreener() {
+            setStatus('Скрининг...');
+            try {
+                const d = await (await fetch(API + '/screener?limit=33&refresh=1')).json();
+                await loadScreener();
+                setStatus('Скрининг завершён: ' + d.count + ' тикеров');
+            } catch(e) {
+                console.error(e);
+                setStatus('Ошибка скрининга');
+            }
+        }
+
+        let currentAnalysisTicker = null;
+
+        async function loadAnalysis(ticker) {
+            if(!ticker) return;
+            currentAnalysisTicker = ticker;
+
+            // Clear previous data to avoid showing stale info while loading
+            document.getElementById('an-price').textContent = '—';
+            document.getElementById('an-signals-text').textContent = '—';
+            document.getElementById('an-rec-title').textContent = 'Рекомендация: —';
+            document.getElementById('an-rec-title').style.color = 'var(--muted)';
+            document.getElementById('an-rec-text').textContent = '';
+            document.getElementById('an-rec-warn').textContent = '';
+            document.getElementById('an-llm-box').style.display = 'none';
+            document.getElementById('an-llm').textContent = '';
+            document.getElementById('an-levels-box').style.display = 'none';
+            document.getElementById('an-vp-box').style.display = 'none';
+            document.getElementById('an-vp-poc').textContent = '—';
+            document.getElementById('an-vp-val-low').textContent = '—';
+            document.getElementById('an-vp-val-high').textContent = '—';
+            document.getElementById('an-news-input').value = '';
+            document.getElementById('an-sentiment-result').style.display = 'none';
+            document.getElementById('an-sentiment-title').textContent = '';
+            document.getElementById('an-sentiment-text').textContent = '';
+            document.getElementById('an-sentiment-btn').disabled = false;
+            renderCritic(null);
+            if(priceChart){ priceChart.destroy(); priceChart = null; }
+            if(rsiChart){ rsiChart.destroy(); rsiChart = null; }
+
+            document.getElementById('ticker-select').value = ticker;
+            setStatus('Анализ ' + ticker + '...');
+            document.getElementById('page-title').textContent = 'Анализ: ' + ticker;
+            const sent = _sentimentCache[ticker];
+            const sentEmoji = sentimentEmoji(sent);
+            document.getElementById('page-badge').textContent = (NAMES[ticker] || '') + ' — ' + ticker + (sentEmoji ? ' ' + sentEmoji : '');
+            try {
+                const d = await (await fetch(API + '/ticker/' + ticker)).json();
+                // Ignore response if user switched to another ticker while loading
+                if(currentAnalysisTicker !== ticker) return;
+                if(d.error) { setStatus('Нет данных'); return; }
+                analysisData = d;
+
+                document.getElementById('an-price').textContent = d.price ? d.price.toFixed(2)+' ₽' : '—';
+                const sigs = (d.signals || []).map(ts);
+                document.getElementById('an-signals-text').textContent = sigs.join(', ') || 'нет';
+
+                // Recommendation from backend logic (recommend_direction)
+                let rec = d.recommendation || '⚪ ЖДАТЬ';
+                let color = 'var(--muted)';
+                if (d.direction === 'long') color = 'var(--up)';
+                else if (d.direction === 'short') color = 'var(--down)';
+                let recDetail = d.reason || 'Нет чёткого направления. RSI, MACD и тренд не дают уверенного сигнала.';
+                let warn = (d.warnings || []).join('. ');
+                if (!warn && BLUE_CHIPS.includes(ticker)) {
+                    warn = ticker + ' — голубая фишка, шорт рискованен';
+                }
+
+                document.getElementById('an-rec-title').textContent = 'Рекомендация: ' + rec;
+                document.getElementById('an-rec-title').style.color = color;
+                document.getElementById('an-rec-text').textContent = recDetail;
+                document.getElementById('an-rec-warn').textContent = warn;
+
+                // Liquidity status
+                const liquidityEl = document.getElementById('an-rec-liquidity');
+                if (d.liquidity_status) {
+                    const isLow = d.low_liquidity === true;
+                    liquidityEl.textContent = (isLow ? '⚠️ ' : '🟡 ') + d.liquidity_status;
+                    liquidityEl.className = 'rec-liquidity' + (isLow ? ' low' : '');
+                } else {
+                    liquidityEl.textContent = '';
+                    liquidityEl.className = 'rec-liquidity';
+                }
+                renderCritic(d.gemma_critique);
+
+                // Bounce predictor card
+                const bounceBox = document.getElementById('an-bounce-box');
+                const bp = d.bounce_prediction;
+                if(bp && bp.probability >= 20) {
+                    bounceBox.style.display = 'block';
+                    const bColor = bp.direction === 'up' ? 'var(--up)' : (bp.direction === 'down' ? 'var(--down)' : 'var(--wait)');
+                    const bArrow = bp.direction === 'up' ? '↑' : (bp.direction === 'down' ? '↓' : '→');
+                    const bLabel = bp.confidence_label === 'high' ? 'высокая' : (bp.confidence_label === 'moderate' ? 'средняя' : 'низкая');
+                    const trendWeak = bp.factors && bp.factors.includes('trend_weakening_confirmed');
+                    const trendText = trendWeak ? 'Тренд ослабевает — сигнал более надёжен' : 'Тренд не ослабевает — осторожно';
+                    document.getElementById('an-bounce-prob').textContent = bArrow + ' ' + bp.probability + '%';
+                    document.getElementById('an-bounce-prob').style.color = bColor;
+                    document.getElementById('an-bounce-dir').textContent = bp.direction === 'up' ? 'Вверх' : (bp.direction === 'down' ? 'Вниз' : 'Не определено');
+                    document.getElementById('an-bounce-conf').textContent = bLabel;
+                    document.getElementById('an-bounce-trend').textContent = trendText;
+                    document.getElementById('an-bounce-trend').style.color = trendWeak ? 'var(--up)' : 'var(--wait)';
+                    const reasons = (bp.reasons || []).slice(0,4).map(x => '• ' + x).join('\n');
+                    document.getElementById('an-bounce-reasons').textContent = reasons || '—';
+                } else {
+                    bounceBox.style.display = 'none';
+                }
+
+                // Algorithmic levels
+                const levelsBox = document.getElementById('an-levels-box');
+                if(d.levels && d.levels.entry) {
+                    levelsBox.style.display = 'block';
+                    document.getElementById('an-entry').textContent = d.levels.entry.toFixed(2) + ' ₽';
+                    document.getElementById('an-stop').textContent = d.levels.stop.toFixed(2) + ' ₽';
+                    document.getElementById('an-take').textContent = d.levels.take.toFixed(2) + ' ₽';
+                } else {
+                    levelsBox.style.display = 'none';
+                }
+
+                // Volume Profile
+                const vpBox = document.getElementById('an-vp-box');
+                if(d.volume_profile && d.volume_profile.poc) {
+                    vpBox.style.display = 'block';
+                    document.getElementById('an-vp-poc').textContent = d.volume_profile.poc.toFixed(2) + ' ₽';
+                    document.getElementById('an-vp-val-low').textContent = d.volume_profile.value_area_low.toFixed(2) + ' ₽';
+                    document.getElementById('an-vp-val-high').textContent = d.volume_profile.value_area_high.toFixed(2) + ' ₽';
+                } else {
+                    vpBox.style.display = 'none';
+                }
+
+                // LLM
+                const llmBox = document.getElementById('an-llm-box');
+                if(d.llm_analysis) {
+                    llmBox.style.display = 'block';
+                    llmBox.querySelector('.llm-title').textContent = '🤖 LLM Аналитика';
+                    document.getElementById('an-llm').textContent = d.llm_analysis;
+                    document.getElementById('an-llm-warn').textContent = '';
+                } else {
+                    llmBox.style.display = 'none';
+                }
+
+                // Auto-show latest RSS sentiment (from background scan)
+                const autoSent = d.latest_sentiment;
+                const sentBox = document.getElementById('an-sentiment-result');
+                const sentTitle = document.getElementById('an-sentiment-title');
+                const sentText = document.getElementById('an-sentiment-text');
+                if(autoSent && autoSent.sentiment) {
+                    sentBox.style.display = 'block';
+                    sentBox.className = 'sentiment-' + autoSent.sentiment;
+                    const emoji = autoSent.sentiment === 'bullish' ? '🟢' : (autoSent.sentiment === 'bearish' ? '🔴' : '⚪');
+                    sentTitle.textContent = emoji + ' ' + autoSent.sentiment.toUpperCase() + (autoSent.confidence ? ' (уверенность ' + autoSent.confidence + '%)' : '');
+                    sentText.textContent = (autoSent.summary || '—') + (autoSent.topics && autoSent.topics.length ? ' | Темы: ' + autoSent.topics.join(', ') : '');
+                } else {
+                    sentBox.style.display = 'none';
+                    sentTitle.textContent = '';
+                    sentText.textContent = '';
+                }
+
+                drawCharts(d.chart_data || [], d);
+            }catch(e){ console.error(e); setStatus('Ошибка анализа'); }
+            setStatus('Готово');
+        }
+
+        function renderCritic(text) {
+            const el = document.getElementById('an-rec-critic');
+            if (!text) {
+                el.style.display = 'none';
+                el.textContent = '';
+                el.className = 'rec-critic';
+                return;
+            }
+            const t = (text || '').toUpperCase();
+            let cls = 'unavailable', label = 'Gemma критик';
+            if (t.includes('НЕТ') && !t.includes('ЧАСТИЧНО')) {
+                cls = 'no'; label = 'Gemma критик — не согласен';
+            } else if (t.includes('ЧАСТИЧНО')) {
+                cls = 'partial'; label = 'Gemma критик — частично согласен';
+            } else if (t.includes('ДА')) {
+                cls = 'yes'; label = 'Gemma критик — согласен';
+            }
+            el.style.display = 'block';
+            el.className = 'rec-critic ' + cls;
+            el.innerHTML = '<div style="font-weight:600;margin-bottom:4px">' + label + '</div><div style="white-space:pre-wrap">' + text + '</div>';
+        }
+
+        function drawCharts(rows, data) {
+            const ctxPrice = document.getElementById('chart-price').getContext('2d');
+            const ctxRsi = document.getElementById('chart-rsi').getContext('2d');
+
+            if(!rows.length) return;
+            const labels = rows.map((r,i) => i % 5 === 0 ? (r.date?.split(' ')[0] || i) : '');
+            const prices = rows.map(r => r.close);
+            const rsiData = rows.map(r => r.rsi != null ? r.rsi : null);
+            const sma20 = rows.map(r => r.sma_20 != null ? r.sma_20 : null);
+            const sma50 = rows.map(r => r.sma_50 != null ? r.sma_50 : null);
+
+            if(priceChart) priceChart.destroy();
+            if(rsiChart) rsiChart.destroy();
+
+            const datasets = [{
+                label: 'Цена закрытия',
+                data: prices,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52,152,219,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 1.5
+            }];
+            if(sma20.some(v=>v!=null)) datasets.push({
+                label: 'SMA20', data: sma20, borderColor: '#e67e22',
+                backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 1
+            });
+            if(sma50.some(v=>v!=null)) datasets.push({
+                label: 'SMA50', data: sma50, borderColor: '#9b59b6',
+                backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 1
+            });
+
+            priceChart = new Chart(ctxPrice, {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top' }, title: { display: true, text: data.ticker || 'Цена' } },
+                    scales: {
+                        x: { ticks: { maxTicksLimit: 6, color: '#ccc' }, grid: { color: '#555' } },
+                        y: { ticks: { color: '#ccc' }, grid: { color: '#555' } }
+                    }
+                }
+            });
+
+            rsiChart = new Chart(ctxRsi, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'RSI(14)',
+                        data: rsiData,
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46,204,113,0.15)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 1.5,
+                        spanGaps: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top' }, title: { display: true, text: 'RSI(14)' } },
+                    scales: {
+                        x: { display: false },
+                        y: { min: 0, max: 100, ticks: { color: '#ccc' }, grid: { color: '#555' } }
+                    }
+                }
+            });
+        }
+
+        async function analyzeSentiment() {
+            const ticker = currentAnalysisTicker;
+            const newsText = document.getElementById('an-news-input').value.trim();
+            const box = document.getElementById('an-sentiment-result');
+            const title = document.getElementById('an-sentiment-title');
+            const text = document.getElementById('an-sentiment-text');
+            if(!ticker) return;
+            if(!newsText) {
+                // No manual text: try to show auto-RSS sentiment if already loaded
+                const auto = analysisData && analysisData.latest_sentiment;
+                if(auto && auto.sentiment) {
+                    box.style.display = 'block';
+                    box.className = 'sentiment-' + auto.sentiment;
+                    const emoji = auto.sentiment === 'bullish' ? '🟢' : (auto.sentiment === 'bearish' ? '🔴' : '⚪');
+                    title.textContent = emoji + ' ' + auto.sentiment.toUpperCase() + (auto.confidence ? ' (уверенность ' + auto.confidence + '%)' : '') + ' [авто]';
+                    text.textContent = (auto.summary || '—') + (auto.topics && auto.topics.length ? ' | Темы: ' + auto.topics.join(', ') : '');
+                } else {
+                    box.style.display = 'block';
+                    box.className = 'sentiment-neutral';
+                    title.textContent = '⚠️ Нет данных';
+                    text.textContent = 'Авто-скан новостей ещё не собрал сентимент для этого тикера. Введите текст вручную или подождите фоновое обновление (раз в 15 мин).';
+                }
+                return;
+            }
+            const btn = document.getElementById('an-sentiment-btn');
+            btn.disabled = true; btn.textContent = 'Анализ...';
+            box.style.display = 'none';
+            try {
+                const res = await fetch(API + '/ticker/' + ticker + '/sentiment', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({news: newsText.split('\n').filter(l=>l.trim())})
+                });
+                if(!res.ok) {
+                    const err = await res.text();
+                    console.error('Sentiment API error:', res.status, err);
+                    box.style.display = 'block';
+                    box.className = 'sentiment-neutral';
+                    title.textContent = '⚠️ Ошибка API';
+                    text.textContent = 'Статус ' + res.status + '. Возможно, сервер перезагружается или LLM недоступен.';
+                    return;
+                }
+                const d = await res.json();
+                console.log('Sentiment result:', d);
+                box.style.display = 'block';
+                box.className = 'sentiment-' + (d.sentiment || 'neutral');
+                const emoji = d.sentiment === 'bullish' ? '🟢' : (d.sentiment === 'bearish' ? '🔴' : '⚪');
+                title.textContent = emoji + ' ' + (d.sentiment || 'NEUTRAL').toUpperCase() + (d.confidence ? ' (уверенность ' + d.confidence + '%)' : '');
+                text.textContent = (d.summary || '—') + (d.key_topics && d.key_topics.length ? ' | Темы: ' + d.key_topics.join(', ') : '');
+            }catch(e) {
+                console.error('Sentiment fetch error:', e);
+                box.style.display = 'block';
+                box.className = 'sentiment-neutral';
+                title.textContent = '⚠️ Ошибка сети';
+                text.textContent = 'Не удалось связаться с сервером. Проверьте, что бэкенд запущен.';
+            }
+            btn.disabled = false; btn.textContent = 'Анализ сентимента';
+        }
+
+        async function includeNewsInAnalysis() {
+            const ticker = currentAnalysisTicker;
+            const newsText = document.getElementById('an-news-input').value.trim();
+            setStatus('Кнопка нажата...');
+            if(!ticker || !newsText) {
+                setStatus('Ошибка: введите текст новости');
+                return;
+            }
+            setStatus('Загружаю анализ с новостями...');
+            await loadAnalysisWithNews(ticker, newsText);
+        }
+
+        async function loadAnalysisWithNews(ticker, newsText) {
+            if(!ticker) return;
+            currentAnalysisTicker = ticker;
+            document.getElementById('ticker-select').value = ticker;
+            setStatus('Анализ ' + ticker + ' + новости...');
+            document.getElementById('page-title').textContent = 'Анализ: ' + ticker;
+            document.getElementById('page-badge').textContent = (NAMES[ticker] || '') + ' — ' + ticker;
+            try {
+                const url = API + '/ticker/' + ticker + '?news=' + encodeURIComponent(newsText);
+                const res = await fetch(url);
+                if(!res.ok) {
+                    setStatus('Ошибка сервера: ' + res.status);
+                    return;
+                }
+                const d = await res.json();
+                if(currentAnalysisTicker !== ticker) return;
+                if(d.error) { setStatus('Нет данных'); return; }
+                analysisData = d;
+                // Reuse existing rendering logic
+                document.getElementById('an-price').textContent = d.price ? d.price.toFixed(2)+' ₽' : '—';
+                const sigs = (d.signals || []).map(ts);
+                document.getElementById('an-signals-text').textContent = sigs.join(', ') || 'нет';
+                let rec = d.recommendation || '⚪ ЖДАТЬ';
+                let color = 'var(--muted)';
+                if (d.direction === 'long') color = 'var(--up)';
+                else if (d.direction === 'short') color = 'var(--down)';
+                let recDetail = d.reason || 'Нет чёткого направления.';
+                let warn = (d.warnings || []).join('. ');
+                if (!warn && BLUE_CHIPS.includes(ticker)) {
+                    warn = ticker + ' — голубая фишка, шорт рискованен';
+                }
+                document.getElementById('an-rec-title').textContent = 'Рекомендация: ' + rec;
+                document.getElementById('an-rec-title').style.color = color;
+                document.getElementById('an-rec-text').textContent = recDetail;
+                document.getElementById('an-rec-warn').textContent = warn;
+                const liquidityEl2 = document.getElementById('an-rec-liquidity');
+                if (d.liquidity_status) {
+                    const isLow2 = d.low_liquidity === true;
+                    liquidityEl2.textContent = (isLow2 ? '⚠️ ' : '🟡 ') + d.liquidity_status;
+                    liquidityEl2.className = 'rec-liquidity' + (isLow2 ? ' low' : '');
+                } else {
+                    liquidityEl2.textContent = '';
+                    liquidityEl2.className = 'rec-liquidity';
+                }
+                renderCritic(d.gemma_critique);
+                const levelsBox = document.getElementById('an-levels-box');
+                if(d.levels && d.levels.entry) {
+                    levelsBox.style.display = 'block';
+                    document.getElementById('an-entry').textContent = d.levels.entry.toFixed(2) + ' ₽';
+                    document.getElementById('an-stop').textContent = d.levels.stop.toFixed(2) + ' ₽';
+                    document.getElementById('an-take').textContent = d.levels.take.toFixed(2) + ' ₽';
+                } else { levelsBox.style.display = 'none'; }
+                const vpBox = document.getElementById('an-vp-box');
+                if(d.volume_profile && d.volume_profile.poc) {
+                    vpBox.style.display = 'block';
+                    document.getElementById('an-vp-poc').textContent = d.volume_profile.poc.toFixed(2) + ' ₽';
+                    document.getElementById('an-vp-val-low').textContent = d.volume_profile.value_area_low.toFixed(2) + ' ₽';
+                    document.getElementById('an-vp-val-high').textContent = d.volume_profile.value_area_high.toFixed(2) + ' ₽';
+                } else { vpBox.style.display = 'none'; }
+                const llmBox = document.getElementById('an-llm-box');
+                if(d.llm_analysis) {
+                    llmBox.style.display = 'block';
+                    llmBox.querySelector('.llm-title').textContent = '🤖 LLM Аналитика (+сентимент)';
+                    document.getElementById('an-llm').textContent = d.llm_analysis;
+                    document.getElementById('an-llm-warn').textContent = '';
+                } else { llmBox.style.display = 'none'; }
+                drawCharts(d.chart_data || [], d);
+            }catch(e){ console.error(e); setStatus('Ошибка анализа'); }
+            setStatus('Готово');
+        }
+
+        function initIntradaySelect() {
+            const sel = document.getElementById('intraday-select');
+            TICKERS.forEach(t => {
+                const o = document.createElement('option');
+                o.value = t;
+                o.textContent = t + ' — ' + (NAMES[t] || '');
+                sel.appendChild(o);
+            });
+        }
+
+        function _startIntradayTimer() {
+            _stopIntradayTimer();
+            _intradayTimer = setInterval(() => {
+                const sel = document.getElementById('intraday-select');
+                if(sel && sel.value) loadIntraday(sel.value, false);
+            }, 60_000);
+        }
+        function _stopIntradayTimer() {
+            if(_intradayTimer) { clearInterval(_intradayTimer); _intradayTimer = null; }
+        }
+
+        async function loadIntraday(ticker, withLLM) {
+            if(!ticker) return;
+            currentIntradayTicker = ticker;
+            const useLLM = withLLM ? 'true' : 'false';
+
+            document.getElementById('id-price').textContent = '—';
+            document.getElementById('id-high').textContent = '—';
+            document.getElementById('id-low').textContent = '—';
+            document.getElementById('id-vwap').textContent = '—';
+            document.getElementById('id-rsi').textContent = '—';
+            document.getElementById('id-spread').textContent = '—';
+            document.getElementById('id-rec-title').textContent = 'Рекомендация: —';
+            document.getElementById('id-rec-title').style.color = 'var(--muted)';
+            document.getElementById('id-rec-text').textContent = '';
+            document.getElementById('id-rec-warn').textContent = '';
+            document.getElementById('id-levels-box').style.display = 'none';
+            document.getElementById('id-llm-box').style.display = 'none';
+            document.getElementById('id-llm').textContent = '';
+            if(intradayChart){ intradayChart.destroy(); intradayChart = null; }
+
+            document.getElementById('intraday-select').value = ticker;
+            setStatus('Интрадей ' + ticker + '...');
+            document.getElementById('page-title').textContent = 'Интрадей: ' + ticker;
+            document.getElementById('page-badge').textContent = (NAMES[ticker] || '') + ' — ' + ticker;
+
+            try {
+                const d = await (await fetch(API + '/intraday/' + ticker + '?llm=' + useLLM)).json();
+                if(currentIntradayTicker !== ticker) return;
+
+                const m = d.metrics || {};
+                const price = m.price;
+                document.getElementById('id-price').textContent = price ? price.toFixed(2) + ' ₽' : '—';
+                document.getElementById('id-high').textContent = m.dist_to_high_pct != null ? m.dist_to_high_pct.toFixed(2) + '%' : '—';
+                document.getElementById('id-low').textContent = m.dist_to_low_pct != null ? m.dist_to_low_pct.toFixed(2) + '%' : '—';
+                document.getElementById('id-vwap').textContent = m.vwap != null ? m.vwap.toFixed(2) + ' ₽' : '—';
+                document.getElementById('id-rsi').textContent = m.rsi != null ? m.rsi.toFixed(1) : '—';
+                document.getElementById('id-spread').textContent = m.spread_pct != null ? m.spread_pct.toFixed(3) + '%' : '—';
+
+                const recTitle = document.getElementById('id-rec-title');
+                const signalNames = {
+                    no_signal: 'нет сигнала',
+                    rsi_oversold_bounce: 'RSI перепродан',
+                    rsi_overbought_pullback: 'RSI перекуплен',
+                    macd_bullish_cross: 'MACD бычий кросс',
+                    macd_bearish_cross: 'MACD медвежий кросс',
+                    volume_spike: 'всплеск объёма',
+                    vwap_bounce: 'отскок от VWAP',
+                    vwap_breakdown: 'пробой VWAP',
+                    range_breakout: 'прорыв диапазона',
+                    range_breakdown: 'пробой диапазона',
+                    gap_up: 'гэп вверх',
+                    gap_down: 'гэп вниз'
+                };
+                let rec = d.direction === 'long' ? 'ЛОНГ' : (d.direction === 'short' ? 'ШОРТ' : 'НЕЙТРАЛ');
+                rec += ' (' + (signalNames[d.signal] || d.signal || 'нет сигнала') + ', уверенность ' + (d.confidence || 0) + '%)';
+                recTitle.textContent = 'Рекомендация: ' + rec;
+                recTitle.style.color = d.direction === 'long' ? 'var(--up)' : (d.direction === 'short' ? 'var(--down)' : 'var(--muted)');
+                document.getElementById('id-rec-text').textContent = d.reason || '';
+
+                const sigNames = {
+                    near_daily_low: 'у дневного лоу',
+                    near_daily_high: 'у дневного хая',
+                    rsi_oversold: 'RSI перепродан',
+                    rsi_overbought: 'RSI перекуплен',
+                    volume_spike: 'всплеск объёма',
+                    volume_confirmation: 'объёмное подтверждение',
+                    price_around_vwap: 'цена у VWAP',
+                    double_bottom: 'двойное дно',
+                    double_top: 'двойная вершина',
+                    above_vwap: 'выше VWAP',
+                    below_vwap: 'ниже VWAP',
+                    adx_strong: 'ADX сильный тренд',
+                    daily_bounce_aligned: 'отскок дневной — подтвержден',
+                    daily_bounce_contrarian: 'отскок дневной — противоречит',
+                    trend_weakening_confirmed: 'тренд ослабевает'
+                };
+                const used = (d.signals_used || []).map(s => sigNames[s] || s).join(', ');
+                let warn = used ? 'Факторы: ' + used : '';
+                if(!d.provider_used && useLLM === 'true') warn += (warn ? ' | ' : '') + 'LLM не дал подтверждения';
+                document.getElementById('id-rec-warn').textContent = warn;
+
+                const levelsBox = document.getElementById('id-levels-box');
+                if(d.entry != null && d.stop != null && d.take != null) {
+                    levelsBox.style.display = 'block';
+                    document.getElementById('id-entry').textContent = d.entry.toFixed(2) + ' ₽';
+                    document.getElementById('id-stop').textContent = d.stop.toFixed(2) + ' ₽';
+                    document.getElementById('id-take').textContent = d.take.toFixed(2) + ' ₽';
+                } else {
+                    levelsBox.style.display = 'none';
+                }
+
+                const llmBox = document.getElementById('id-llm-box');
+                if(d.llm_summary && d.provider_used) {
+                    llmBox.style.display = 'block';
+                    document.getElementById('id-llm-provider').textContent = d.provider_used;
+                    document.getElementById('id-llm').textContent = d.llm_summary;
+                } else {
+                    llmBox.style.display = 'none';
+                }
+
+                drawIntradayChart(d.candles_5m || []);
+            } catch(e) {
+                console.error('loadIntraday error', e);
+                setStatus('Ошибка интрадея');
+            }
+            setStatus('Готово');
+        }
+
+        function drawIntradayChart(rows) {
+            const canvas = document.getElementById('chart-intraday');
+            if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if(intradayChart){ intradayChart.destroy(); intradayChart = null; }
+            rows = rows || [];
+            if(!rows.length) return;
+
+            const labels = rows.map((r, i) => (i % 6 === 0 && r.ts) ? r.ts.split(' ')[1]?.slice(0,5) || i : '');
+            const closes = rows.map(r => r.close);
+            const vwaps = rows.map(r => r.vwap);
+            const highs = rows.map(r => r.high);
+            const lows = rows.map(r => r.low);
+
+            const datasets = [{
+                label: 'Цена закрытия (10м)',
+                data: closes,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52,152,219,0.1)',
+                fill: true,
+                tension: 0.2,
+                pointRadius: 0,
+                borderWidth: 1.5
+            }];
+            if(vwaps.some(v=>v!=null)) datasets.push({
+                label: 'VWAP', data: vwaps, borderColor: '#e67e22',
+                backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 1, fill: false
+            });
+            if(highs.some(v=>v!=null)) datasets.push({
+                label: 'Максимум', data: highs, borderColor: '#2ecc71',
+                backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 1, borderDash: [4,4], fill: false
+            });
+            if(lows.some(v=>v!=null)) datasets.push({
+                label: 'Минимум', data: lows, borderColor: '#e74c3c',
+                backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 1, borderDash: [4,4], fill: false
+            });
+
+            intradayChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top', labels: { color: '#fff' } }, title: { display: true, text: currentIntradayTicker || 'Intraday', color: '#fff' } },
+                    scales: {
+                        x: { ticks: { maxTicksLimit: 8, color: '#ccc' }, grid: { color: '#555' } },
+                        y: { ticks: { color: '#ccc' }, grid: { color: '#555' } }
+                    }
+                }
+            });
+        }
+
+        function initTickerSelect() {
+            const dl = document.getElementById('ticker-datalist');
+            TICKERS.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t+' — '+(NAMES[t]||''); dl.appendChild(o); });
+        }
+
+        // Browser push notifications for strong signals
+        const _alertHistory = new Set(); // ticker:type keys, auto-expire after 15 min
+        function _markAlerted(key) {
+            _alertHistory.add(key);
+            setTimeout(() => _alertHistory.delete(key), 15 * 60 * 1000);
+        }
+
+        async function requestNotificationPermission() {
+            if (!('Notification' in window)) return;
+            if (Notification.permission === 'default') {
+                const perm = await Notification.requestPermission();
+                console.log('Notification permission:', perm);
+            }
+        }
+
+        async function pollAlerts() {
+            if (!('Notification' in window)) return;
+            if (Notification.permission !== 'granted') return;
+            try {
+                const d = await (await fetch(API + '/alerts')).json();
+                (d.alerts || []).forEach(a => {
+                    const key = a.ticker + ':' + a.type;
+                    if (!_alertHistory.has(key)) {
+                        new Notification('MOEX Assistant', {
+                            body: a.message,
+                            tag: key,
+                            requireInteraction: a.priority === 'high',
+                        });
+                        _markAlerted(key);
+                    }
+                });
+            } catch (e) {
+                console.error('Alert poll error:', e);
+            }
+        }
+
+        requestNotificationPermission();
+        setInterval(pollAlerts, 30_000);
+        setTimeout(pollAlerts, 5_000);
+
+        initTickerSelect();
+        initIntradaySelect();
+        refreshAll();
+        // Auto-refresh every 15 minutes
+        setInterval(refreshAll, 15 * 60 * 1000);
+    </script>
+</body>
+</html>

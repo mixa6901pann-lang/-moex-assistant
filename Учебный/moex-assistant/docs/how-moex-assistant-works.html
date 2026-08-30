@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Как работает MOEX Assistant</title>
+<style>
+  body { font-family: Georgia, serif; line-height: 1.6; max-width: 900px; margin: 40px auto; padding: 20px; color: #222; }
+  h1 { font-size: 28px; border-bottom: 2px solid #1a73e8; padding-bottom: 10px; }
+  h2 { font-size: 22px; color: #1a73e8; margin-top: 30px; }
+  h3 { font-size: 18px; color: #333; margin-top: 20px; }
+  code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; }
+  pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+  th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+  th { background: #1a73e8; color: #fff; }
+  tr:nth-child(even) { background: #f9f9f9; }
+  .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 15px; margin: 15px 0; }
+  .footer { margin-top: 40px; font-size: 12px; color: #777; border-top: 1px solid #ddd; padding-top: 10px; }
+</style>
+</head>
+<body>
+
+<h1>Как работает MOEX Assistant</h1>
+<p><strong>Версия:</strong> 2026-06-17 | <strong>Авторы:</strong> Миша + Claude (Anthropic)</p>
+
+<h2>1. Общая идея</h2>
+<p>MOEX Assistant — это автоматизированный аналитик российского фондового рынка (Мосбиржа). Он собирает рыночные данные, анализирует их с помощью нейросетей, принимает торговые решения в виртуальном портфеле, ведёт дневник предсказаний и предупреждает о геополитических рисках.</p>
+
+<h2>2. Архитектура</h2>
+<pre>
+MOEX API  →  Ядро (core/)  →  Агенты  →  Веб / VK / Бумажный портфель
+RSS ленты  →  moex.py      → TradingAgent
+Geo-сканер  →  db.py        → GeoRiskAgent
+              llm.py        → NewsSentimentAgent
+              codeact.py
+</pre>
+
+<h2>3. Расписание по Москве</h2>
+<table>
+<tr><th>Время</th><th>Событие</th></tr>
+<tr><td>10:00</td><td>Утренний скринер — обновление 33 тикеров, расчёт индикаторов</td></tr>
+<tr><td>Каждые 15 мин (10–18:45)</td><td>Внутридневный монитор — алерты на резкие сигналы</td></tr>
+<tr><td>Каждые 15 мин (07–23)</td><td>RSS-сканер — сентимент-анализ новостей</td></tr>
+<tr><td>Каждые 30 мин (07–23)</td><td>Геополитический сканер — оценка риска 0–10</td></tr>
+<tr><td><strong>18:00</strong></td><td><strong>TradingAgent</strong> — ReAct-цикл, торговые решения</td></tr>
+<tr><td>19:00</td><td>Вечерний отчёт</td></tr>
+<tr><td>19:05</td><td>Проверка точности прогнозов (1д / 3д / 7д)</td></tr>
+<tr><td>19:06</td><td>Проверка бумажных позиций (таймаут 7 дней)</td></tr>
+<tr><td>Суббота 12:00</td><td>Обновление дивидендного календаря</td></tr>
+</table>
+
+<h2>4. ReAct-цикл TradingAgent (18:00)</h2>
+<p>Главное событие дня. Агент работает по циклу <strong>Наблюдение → Мышление → Действие → Решение</strong>:</p>
+<ol>
+<li>Получает системную инструкцию с живым портфелем и котировками</li>
+<li>Решает, какие данные нужны</li>
+<li>Вызывает инструменты:
+  <ul>
+    <li><code>get_price("SBER")</code> — цена и свечи</li>
+    <li><code>get_indicator("SBER", "rsi")</code> — RSI, MACD, ADX</li>
+    <li><code>get_news("SBER")</code> — новости</li>
+    <li><code>get_georisk()</code> — геополитика</li>
+    <li><code>search_web("SBER санкции")</code> — поиск по RSS</li>
+    <li><code>execute_python("...")</code> — математика (корреляция и т.д.)</li>
+  </ul>
+</li>
+<li>После 1–5 итераций выдаёт JSON-решение: <code>action</code>, <code>confidence</code>, <code>reasoning</code>, <code>price</code></li>
+</ol>
+
+<div class="note"><strong>Пример решения:</strong> action: wait, ticker: SBER, confidence: 95, reasoning: "Нет чёткого направления, тренд боковой", price: 320.37</div>
+
+<h2>5. Бумажная торговля</h2>
+<ul>
+<li><strong>Счёт:</strong> 50 000 ₽ (виртуальный)</li>
+<li><strong>Лимит позиций:</strong> 5 одновременно</li>
+<li><strong>Размер сделки:</strong> до 2% от капитала</li>
+<li><strong>Стоп-лосс:</strong> 2×ATR</li>
+<li><strong>Таймаут:</strong> закрытие через 7 дней</li>
+</ul>
+
+<h2>6. LLM-провайдеры и fallback</h2>
+<table>
+<tr><th>Провайдер</th><th>Модель</th><th>Когда</th></tr>
+<tr><td>OpenRouter (основной)</td><td>Claude Sonnet 4.6</td><td>Есть кредиты — умно, точно, быстро</td></tr>
+<tr><td>Ollama (резерв)</td><td>Gemma3:4b</td><td>OpenRouter 402/429 — авто-переключение</td></tr>
+</table>
+<p>При исчерпании кредитов система автоматически переходит на Ollama и логирует предупреждение. После пополнения — снова Claude.</p>
+
+<h2>7. GeoRisk — геополитический стоп</h2>
+<p>Сканер оценивает риск по шкале 0–10:</p>
+<ul>
+<li><strong>0–3:</strong> низкий — торговля разрешена</li>
+<li><strong>4–6:</strong> умеренный — осторожность</li>
+<li><strong>7–10:</strong> критический — ВСЕ позиции закрываются, новые не открываются</li>
+</ul>
+<p>Источники: ТАСС, Lenta.ru, РИА Новости. Ключевые слова: санкции, война, Иран, нефть, газ, СВО.</p>
+
+<h2>8. CodeAct — математика от LLM</h2>
+<p>LLM может писать Python-код для расчётов в изолированной песочнице. Разрешены: numpy, scipy, pandas, math, statistics.</p>
+<pre>
+import numpy as np
+from scipy import stats
+corr, p = stats.pearsonr(sber_prices, gazp_prices)
+print(f"Корреляция: {corr:.4f}")
+</pre>
+
+<h2>9. База данных (SQLite)</h2>
+<table>
+<tr><th>Таблица</th><th>Что хранит</th></tr>
+<tr><td>candles</td><td>Исторические свечи OHLCV</td></tr>
+<tr><td>screener_results</td><td>Результаты утреннего скрининга</td></tr>
+<tr><td>predictions</td><td>Прогнозы TradingAgent (с reasoning)</td></tr>
+<tr><td>prediction_checks</td><td>Проверка точности (1д/3д/7д)</td></tr>
+<tr><td>paper_positions</td><td>Бумажные позиции и P&L</td></tr>
+<tr><td>sentiment</td><td>Сентимент новостей</td></tr>
+<tr><td>georisk_scores</td><td>Геополитический риск</td></tr>
+<tr><td>dividends</td><td>Дивидендный календарь</td></tr>
+</table>
+
+<h2>10. Веб-интерфейс</h2>
+<table>
+<tr><th>Раздел</th><th>Содержание</th></tr>
+<tr><td>Главная</td><td>Индексы, топ-5 скринера</td></tr>
+<tr><td>Скринер</td><td>33 акции с индикаторами и очками</td></tr>
+<tr><td>Анализ</td><td>График + RSI + SMA + текст от LLM</td></tr>
+<tr><td>Дневник</td><td>Прогнозы, позиции, P&L, win rate</td></tr>
+<tr><td>Настройки</td><td>Параметры риска, LLM-провайдер</td></tr>
+</table>
+
+<h2>11. Безопасность</h2>
+<ul>
+<li><strong>Whitelist</strong> — только 33 разрешённых тикера</li>
+<li><strong>GeoRisk ≥ 7</strong> — аварийное закрытие всех позиций</li>
+<li><strong>Бумажная торговля</strong> — никаких реальных денег</li>
+<li><strong>CodeAct sandbox</strong> — нельзя открывать файлы, выходить в сеть</li>
+<li><strong>Макс 5 позиций</strong> — защита от переконцентрации</li>
+</ul>
+
+<h2>12. Контакты</h2>
+<p><strong>GitHub:</strong> mixa6901pann-lang/-moex-assistant<br>
+<strong>Сервер:</strong> Timeweb Cloud, IP 201.51.1.244<br>
+<strong>Последнее обновление:</strong> 2026-06-17</p>
+
+<div class="footer">
+Документ создан Claude (Anthropic) для проекта MOEX Assistant. Для сохранения в PDF нажмите Ctrl+P → Сохранить как PDF.
+</div>
+
+</body>
+</html>
